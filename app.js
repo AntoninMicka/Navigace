@@ -79,18 +79,89 @@ if (socket) {
 
 // --- Kompas / Magnetometr pro lepší přesnost směru ---
 let compassHeading = null;
+let activeHeading = null;
+let lastBearingUpdate = 0;
+let compassPermissionAsked = false;
+let compassEventsSeen = 0;
+
+function normalizeHeading(value) {
+    if (!Number.isFinite(value)) return null;
+    return ((value % 360) + 360) % 360;
+}
+
+function headingDelta(a, b) {
+    return Math.abs((((a - b) + 540) % 360) - 180);
+}
+
+function setActiveHeading(heading, updateMap = false) {
+    const normalized = normalizeHeading(heading);
+    if (normalized === null) return;
+
+    activeHeading = normalized;
+    document.getElementById('pos-heading').innerText = activeHeading.toFixed(0);
+
+    if (!updateMap || !isNavigating || !isTracking || map.getPitch() <= 0) return;
+
+    const now = performance.now();
+    const currentBearing = normalizeHeading(map.getBearing()) || 0;
+
+    if (now - lastBearingUpdate < 120 || headingDelta(activeHeading, currentBearing) < 3) return;
+
+    lastBearingUpdate = now;
+    map.easeTo({ bearing: activeHeading, duration: 120, easing: (t) => t });
+}
+
+function handleCompassHeading(heading, source) {
+    const normalized = normalizeHeading(heading);
+    if (normalized === null) return;
+
+    compassHeading = normalized;
+    compassEventsSeen++;
+    setActiveHeading(compassHeading, true);
+    const compassBtn = document.getElementById('btn-compass');
+    if (compassBtn) {
+        compassBtn.innerText = `HDG ${compassHeading.toFixed(0)}`;
+    }
+
+    if (compassEventsSeen === 1) {
+        sysLog(`Kompas aktivní (${source}).`);
+    }
+}
+
+async function requestCompassAccess() {
+    if (compassPermissionAsked) return;
+    compassPermissionAsked = true;
+
+    if (!window.isSecureContext) {
+        sysLog('WARN: Kompas vyžaduje HTTPS nebo localhost.');
+        return;
+    }
+
+    try {
+        if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            const permission = await DeviceOrientationEvent.requestPermission();
+            sysLog(permission === 'granted' ? 'Kompas povolen.' : 'Kompas zamítnut.');
+        } else {
+            sysLog('Kompas: čekám na data senzoru.');
+        }
+    } catch (err) {
+        sysLog(`Kompas nelze povolit: ${err.message}`);
+    }
+}
 
 // Pro Android/moderní prohlížeče
 window.addEventListener('deviceorientationabsolute', (event) => {
     if (event.alpha !== null) {
-        compassHeading = 360 - event.alpha; // Převedení na standardní azimut
+        handleCompassHeading(360 - event.alpha, 'absolute');
     }
 }, true);
 
 // Fallback pro iOS
 window.addEventListener('deviceorientation', (event) => {
     if (event.webkitCompassHeading) {
-        compassHeading = event.webkitCompassHeading;
+        handleCompassHeading(event.webkitCompassHeading, 'webkit');
+    } else if (event.absolute && event.alpha !== null) {
+        handleCompassHeading(360 - event.alpha, 'orientation');
     }
 }, true);
 
@@ -247,21 +318,41 @@ function updateNavigationButtons() {
     startBtn.innerText = isNavigating ? 'NAV ACTIVE' : 'START NAV';
 }
 
+function focusCurrentPosition(duration = 500) {
+    if (!hasLocation) {
+        sysLog('WARN: Pozice zatím není známa.');
+        return;
+    }
+
+    const camera = {
+        center: [currentLng, currentLat],
+        zoom: 16,
+        pitch: isNavigating ? 45 : 0,
+        duration,
+        easing: (t) => t
+    };
+
+    if (isNavigating && activeHeading !== null) {
+        camera.bearing = activeHeading;
+    }
+
+    map.easeTo(camera);
+}
+
 function startNavigation() {
     if (!routePreviewReady || currentRouteCoords.length === 0) {
         sysLog('WARN: Nejdřív vyber cíl a připrav trasu.');
         return;
     }
 
+    requestCompassAccess();
     isNavigating = true;
     isTracking = true;
     updateNavigationButtons();
 
-    if (hasLocation) {
-        map.flyTo({ center: [currentLng, currentLat], zoom: 16, pitch: 45, duration: 1200 });
-    }
-
     setMobileScreen('map');
+    setTimeout(() => focusCurrentPosition(650), 80);
+    setTimeout(() => focusCurrentPosition(250), 350);
     sysLog('Navigace spuštěna.');
 }
 
@@ -334,6 +425,7 @@ async function calculateRoute(destLng, destLat, options = {}) {
             updateNavigationButtons();
             
             if (isNavigating) {
+                setTimeout(() => focusCurrentPosition(350), 80);
                 sysLog(`Trasa aktualizována: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min.`);
             } else {
                 sysLog(`Trasa připravena: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min. Spusť navigaci ručně.`);
@@ -357,19 +449,24 @@ function handlePositionSuccess(position) {
         return;
     }
 
-    const speed = (coords.speed * 3.6).toFixed(1) || 0; // m/s na km/h
-    let heading = coords.heading ? coords.heading : null;
+    const speedKmh = Number.isFinite(coords.speed) ? coords.speed * 3.6 : 0;
+    const displaySpeed = speedKmh.toFixed(1);
+    let heading = normalizeHeading(coords.heading);
     
     // Fúze senzorů: Pokud jedeme pomalu (< 5 km/h) nebo GPS ztratí směr, použijeme kompas
-    if ((speed < 5 || heading === null) && compassHeading !== null) {
+    if ((speedKmh < 8 || heading === null) && compassHeading !== null) {
         heading = compassHeading;
     }
     
-    const displayHeading = heading !== null ? heading.toFixed(0) : '--';
+    if (heading !== null) {
+        setActiveHeading(heading, true);
+    }
+
+    const displayHeading = activeHeading !== null ? activeHeading.toFixed(0) : '--';
 
     // Odeslání polohy na BFT server
     if (socket) {
-        socket.emit('position_update', { lat, lng, speed, heading: displayHeading });
+        socket.emit('position_update', { lat, lng, speed: displaySpeed, heading: displayHeading });
     }
 
     // Uložení aktuální polohy pro centrování
@@ -382,7 +479,7 @@ function handlePositionSuccess(position) {
     document.getElementById('status').style.color = '#00ff00';
     document.getElementById('pos-lat').innerText = lat.toFixed(5);
     document.getElementById('pos-lon').innerText = lng.toFixed(5);
-    document.getElementById('pos-speed').innerText = speed > 0 ? speed : '0';
+    document.getElementById('pos-speed').innerText = speedKmh > 0 ? displaySpeed : '0';
     document.getElementById('pos-heading').innerText = displayHeading;
 
     // Update Map
@@ -399,12 +496,24 @@ function handlePositionSuccess(position) {
         isFirstLocation = false;
         sysLog('Poloha zaměřena.');
     } else if (isNavigating && isTracking) {
-        map.panTo([lng, lat], { duration: 1000 });
+        const camera = {
+            center: [lng, lat],
+            zoom: Math.max(map.getZoom(), 16),
+            pitch: 45,
+            duration: 250,
+            easing: (t) => t
+        };
+
+        if (activeHeading !== null) {
+            camera.bearing = activeHeading;
+        }
+
+        map.easeTo(camera);
     }
 
     // Taktické natočení mapy jen pokud uživatel mapu zrovna ručně neprohlíží
-    if (heading !== null && map.getPitch() > 0 && isNavigating && isTracking) {
-        map.easeTo({ bearing: heading, duration: 1000 });
+    if (heading !== null) {
+        setActiveHeading(heading, true);
     }
     
     // --- Kontrola sjetí z trasy (Off-route detection) ---
@@ -521,11 +630,13 @@ function createBftMarker(u) {
 
 // Centrování mapy (Tlačítko CENTER)
 document.getElementById('btn-locate').addEventListener('click', () => {
+    requestCompassAccess();
     if (hasLocation) {
         if (isNavigating) {
             isTracking = true; // Obnovit automatické sledování jen během navigace
         }
-        map.flyTo({ center: [currentLng, currentLat], zoom: 16, pitch: isNavigating ? 45 : 0, duration: 1500 });
+        setMobileScreen('map');
+        setTimeout(() => focusCurrentPosition(500), 80);
         sysLog(isNavigating ? 'Sledování obnoveno.' : 'Mapa vycentrována.');
     } else {
         sysLog('WARN: Pozice zatím není známa.');
@@ -533,6 +644,13 @@ document.getElementById('btn-locate').addEventListener('click', () => {
     // Některé prohlížeče vyžadují pro Wake Lock interakci uživatele, zkusíme to i zde
     if (!wakeLock) {
         requestWakeLock();
+    }
+});
+
+document.getElementById('btn-compass').addEventListener('click', () => {
+    requestCompassAccess();
+    if (activeHeading !== null) {
+        map.easeTo({ bearing: activeHeading, duration: 160, easing: (t) => t });
     }
 });
 
