@@ -26,11 +26,13 @@ let currentLat = null;
 let hasLocation = false;
 
 // Navigační stavové proměnné
-let isTracking = true; // Sledování aktivní / Preview mod
+let isTracking = false; // Sledování aktivní / Preview mod
+let isNavigating = false;
 let currentDestLng = null;
 let currentDestLat = null;
 let currentRouteCoords = []; // Souřadnice trasy pro výpočet odchylky
 let destinationMarker = null;
+let routePreviewReady = false;
 
 // Overview mapa pro velký displej
 let overviewMap = null;
@@ -186,6 +188,43 @@ function setDestinationMarker(destLng, destLat) {
     destinationMarker.setLngLat([destLng, destLat]);
 }
 
+function updateNavigationButtons() {
+    const startBtn = document.getElementById('btn-start-nav');
+    const stopBtn = document.getElementById('btn-stop-nav');
+
+    if (!startBtn || !stopBtn) return;
+
+    startBtn.disabled = !routePreviewReady || isNavigating;
+    stopBtn.disabled = !isNavigating;
+    startBtn.innerText = isNavigating ? 'NAV ACTIVE' : 'START NAV';
+}
+
+function startNavigation() {
+    if (!routePreviewReady || currentRouteCoords.length === 0) {
+        sysLog('WARN: Nejdřív vyber cíl a připrav trasu.');
+        return;
+    }
+
+    isNavigating = true;
+    isTracking = true;
+    updateNavigationButtons();
+
+    if (hasLocation) {
+        map.flyTo({ center: [currentLng, currentLat], zoom: 16, pitch: 45, duration: 1200 });
+    }
+
+    setMobileScreen('map');
+    sysLog('Navigace spuštěna.');
+}
+
+function stopNavigation() {
+    isNavigating = false;
+    isTracking = false;
+    updateNavigationButtons();
+    map.easeTo({ pitch: 0, duration: 500 });
+    sysLog(routePreviewReady ? 'Navigace zastavena, trasa zůstává v preview.' : 'Navigace zastavena.');
+}
+
 async function renderRoute(routeGeometry) {
     await waitForMapStyle();
 
@@ -208,7 +247,9 @@ async function renderRoute(routeGeometry) {
 }
 
 // --- Výpočet trasy (Routing API - OSRM) ---
-async function calculateRoute(destLng, destLat) {
+async function calculateRoute(destLng, destLat, options = {}) {
+    const startNavigationAfterRoute = options.startNavigationAfterRoute === true;
+
     if (currentLng === null || currentLat === null) {
         sysLog('WARN: Nelze vypočítat trasu, chybí vlastní poloha.');
         return;
@@ -223,11 +264,19 @@ async function calculateRoute(destLng, destLat) {
             currentDestLng = destLng;
             currentDestLat = destLat;
             currentRouteCoords = route.geometry.coordinates; // Záchyt souřadnic trasy
+            routePreviewReady = true;
+            isNavigating = startNavigationAfterRoute;
+            isTracking = startNavigationAfterRoute;
             
             setDestinationMarker(destLng, destLat);
             await renderRoute(route.geometry);
+            updateNavigationButtons();
             
-            sysLog(`Trasa nalezena: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min.`);
+            if (isNavigating) {
+                sysLog(`Trasa aktualizována: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min.`);
+            } else {
+                sysLog(`Trasa připravena: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min. Spusť navigaci ručně.`);
+            }
         } else {
             sysLog(`WARN: Trasa nenalezena (${data.code || 'bez odpovědi'}).`);
         }
@@ -280,17 +329,17 @@ function handlePositionSuccess(position) {
         map.jumpTo({ center: [lng, lat], zoom: 16 });
         isFirstLocation = false;
         sysLog('Poloha zaměřena.');
-    } else if (isTracking) {
+    } else if (isNavigating && isTracking) {
         map.panTo([lng, lat], { duration: 1000 });
     }
 
     // Taktické natočení mapy jen pokud uživatel mapu zrovna ručně neprohlíží
-    if (heading !== null && map.getPitch() > 0 && isTracking) {
+    if (heading !== null && map.getPitch() > 0 && isNavigating && isTracking) {
         map.easeTo({ bearing: heading, duration: 1000 });
     }
     
     // --- Kontrola sjetí z trasy (Off-route detection) ---
-    if (currentRouteCoords.length > 0) {
+    if (isNavigating && currentRouteCoords.length > 0) {
         let minMeters = Infinity;
         // Najdeme nejbližší segment trasy
         for (let i = 0; i < currentRouteCoords.length - 1; i++) {
@@ -302,7 +351,7 @@ function handlePositionSuccess(position) {
             sysLog(`WARN: Mimo trasu (${Math.round(minMeters)}m). Přepočítávám...`);
             currentRouteCoords = []; // Vymazat, aby se nepřepočítávalo v nekonečné smyčce
             if (currentDestLng !== null && currentDestLat !== null) {
-                calculateRoute(currentDestLng, currentDestLat);
+                calculateRoute(currentDestLng, currentDestLat, { startNavigationAfterRoute: true });
             }
         }
     }
@@ -378,10 +427,12 @@ function createBftMarker(u) {
 
 // Centrování mapy (Tlačítko CENTER)
 document.getElementById('btn-locate').addEventListener('click', () => {
-    isTracking = true; // Obnovit automatické sledování
     if (hasLocation) {
-        map.flyTo({ center: [currentLng, currentLat], zoom: 16, pitch: 45, duration: 1500 });
-        sysLog('Sledování obnoveno.');
+        if (isNavigating) {
+            isTracking = true; // Obnovit automatické sledování jen během navigace
+        }
+        map.flyTo({ center: [currentLng, currentLat], zoom: 16, pitch: isNavigating ? 45 : 0, duration: 1500 });
+        sysLog(isNavigating ? 'Sledování obnoveno.' : 'Mapa vycentrována.');
     } else {
         sysLog('WARN: Pozice zatím není známa.');
     }
@@ -393,20 +444,22 @@ document.getElementById('btn-locate').addEventListener('click', () => {
 
 // Zastavení sledování při manuálním pohybu mapou (Preview mód)
 map.on('dragstart', () => {
-    if (isTracking) {
+    if (isNavigating && isTracking) {
         isTracking = false;
         sysLog('Preview mód (sledování pozastaveno).');
     }
-    map.easeTo({ pitch: 0, duration: 500 });
+    if (map.getPitch() > 0) {
+        map.easeTo({ pitch: 0, duration: 500 });
+    }
 });
 
-// Zachycení kliknutí na mapu pro navigaci
+// Zachycení kliknutí na mapu pro přípravu trasy
 map.on('click', (e) => {
     calculateRoute(e.lngLat.lng, e.lngLat.lat);
 });
 
 // --- Vyhledávání adres (Nominatim Geocoding) ---
-document.getElementById('btn-search').addEventListener('click', async () => {
+async function searchAddress() {
     const query = document.getElementById('search-input').value;
     if (!query) return;
     sysLog(`Hledám: ${query}`);
@@ -419,12 +472,20 @@ document.getElementById('btn-search').addEventListener('click', async () => {
             sysLog(`Nalezeno: ${data[0].display_name.split(',')[0]}`);
             isTracking = false; // Přepnout do preview modu
             map.flyTo({ center: [lon, lat], zoom: 15, pitch: 0 });
-            calculateRoute(lon, lat);
+            await calculateRoute(lon, lat);
+            setMobileScreen('map');
         } else {
             sysLog('Adresa nenalezena.');
         }
     } catch (err) {
         sysLog('ERR: Vyhledávání selhalo.');
+    }
+}
+
+document.getElementById('btn-search').addEventListener('click', searchAddress);
+document.getElementById('search-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        searchAddress();
     }
 });
 
@@ -448,7 +509,7 @@ function renderPOIs() {
         el.style.backgroundColor = '#ffcc00'; el.style.borderRadius = '50%';
         el.style.border = '1px solid #000'; el.title = poi.name;
         
-        el.addEventListener('click', (e) => { e.stopPropagation(); calculateRoute(poi.lng, poi.lat); });
+        el.addEventListener('click', (e) => { e.stopPropagation(); calculateRoute(poi.lng, poi.lat); setMobileScreen('map'); });
         new maplibregl.Marker({ element: el }).setLngLat([poi.lng, poi.lat]).addTo(map);
     });
 }
@@ -456,6 +517,9 @@ function renderPOIs() {
 renderPOIs(); // Vykreslit POI při startu aplikace
 
 // --- UI Toggles ---
+
+document.getElementById('btn-start-nav').addEventListener('click', startNavigation);
+document.getElementById('btn-stop-nav').addEventListener('click', stopNavigation);
 
 // Skrývání logů
 const logToggleBtn = document.getElementById('btn-log-toggle');
@@ -470,6 +534,26 @@ logToggleBtn.addEventListener('click', () => {
 // HUD Modulace
 const hudBtn = document.getElementById('btn-hud');
 const appContainer = document.getElementById('app-container');
+
+function setMobileScreen(screen) {
+    appContainer.classList.remove('screen-map', 'screen-search', 'screen-intel');
+    appContainer.classList.add(`screen-${screen}`);
+
+    document.querySelectorAll('.mobile-tab').forEach((tab) => {
+        tab.classList.toggle('is-active', tab.dataset.screen === screen);
+    });
+
+    if (screen === 'map') {
+        setTimeout(() => map.resize(), 50);
+    }
+}
+
+document.querySelectorAll('.mobile-tab').forEach((tab) => {
+    tab.addEventListener('click', () => setMobileScreen(tab.dataset.screen));
+});
+
+setMobileScreen('map');
+updateNavigationButtons();
 
 let hudActive = false;
 hudBtn.addEventListener('click', () => {

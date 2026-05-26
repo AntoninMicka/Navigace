@@ -13,22 +13,17 @@ body, html {
 }
 
 #app-container {
-    display: flex;
-    flex-direction: column;
+    display: block;
     height: 100vh;
+    height: 100dvh;
     width: 100vw;
     position: relative;
-}
-
-/* Responzivní layout: Na mobilech panel dole, na desktopu vpravo */
-@media (min-width: 768px) {
-    #app-container {
-        flex-direction: row;
-    }
+    padding-bottom: 54px;
 }
 
 #map {
-    flex: 1;
+    position: absolute;
+    inset: 0 0 54px 0;
     background-color: #111;
 }
 
@@ -66,41 +61,54 @@ body, html {
 }
 
 #sidebar {
-    display: flex;
+    display: none;
     flex-direction: column;
+    position: absolute;
+    inset: 0 0 54px 0;
     z-index: 20;
+    background: #050505;
 }
 
 #panel {
-    padding: 8px 12px;
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
     background: rgba(5, 15, 5, 0.95);
-    border-top: 2px solid #00ff00;
+    border-top: none;
     box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
 }
 
-@media (min-width: 768px) {
-    #app-container {
-        flex-direction: row;
-    }
-    #sidebar {
-        width: 240px;
-    }
-    #panel {
-        padding: 15px;
-        border-top: none;
-        border-left: 2px solid #00ff00;
-    }
+#app-container.screen-search #map,
+#app-container.screen-intel #map {
+    display: none;
+}
+
+#app-container.screen-search #sidebar,
+#app-container.screen-intel #sidebar {
+    display: flex;
+}
+
+.panel-section {
+    display: none;
+}
+
+#app-container.screen-search #search-screen,
+#app-container.screen-intel #intel-screen {
+    display: block;
 }
 
 h2 {
-    display: none; /* Skryto na mobilu pro minimalismus */
+    display: block;
     margin: 0 0 15px 0;
     font-size: 1.1rem;
     text-shadow: 0 0 5px #00ff00;
 }
 
-@media (min-width: 768px) {
-    h2 { display: block; }
+h3 {
+    margin: 22px 0 12px;
+    font-size: 1rem;
+    font-weight: normal;
+    text-shadow: 0 0 5px #00ff00;
 }
 
 .panel-header {
@@ -112,17 +120,8 @@ h2 {
 
 .header-buttons {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
-}
-
-@media (min-width: 768px) {
-    .panel-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    .header-buttons {
-        margin-top: 10px;
-    }
 }
 
 /* Vyhledávání */
@@ -144,24 +143,27 @@ h2 {
     background: rgba(0, 100, 0, 0.4);
 }
 
+.route-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
 /* Minimalistické skládání dat na mobilu */
 .intel-data {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px 12px;
-    font-size: 0.85rem;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 1rem;
 }
 
 .intel-data p {
     margin: 0;
-}
-
-@media (min-width: 768px) {
-    .intel-data {
-        flex-direction: column;
-        font-size: 0.95rem;
-        gap: 8px 0;
-    }
 }
 
 /* Logy plovoucí přes mapu */
@@ -188,6 +190,11 @@ h2 {
     margin: 2px 0;
 }
 
+#app-container.screen-search #sys-log,
+#app-container.screen-intel #sys-log {
+    display: none;
+}
+
 .logs-hidden {
     display: none;
 }
@@ -210,6 +217,34 @@ h2 {
     }
 }
 
+#mobile-tabs {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    z-index: 40;
+    height: 54px;
+    background: rgba(5, 15, 5, 0.98);
+    border-top: 2px solid #00ff00;
+}
+
+.mobile-tab {
+    border-top: none;
+    border-bottom: none;
+    border-left: none;
+}
+
+.mobile-tab:last-child {
+    border-right: none;
+}
+
+.mobile-tab.is-active {
+    background: rgba(0, 255, 0, 0.22);
+    box-shadow: inset 0 0 12px rgba(0, 255, 0, 0.2);
+}
+
 button {
     background: transparent;
     color: #00ff00;
@@ -227,4 +262,67 @@ button:hover {
 .hud-mode {
     transform: scaleY(-1);
     /* Kompenzace stínů/barev by přišla sem */
+}
+
+/* Desktop: mapa s panely okolo */
+@media (min-width: 768px) {
+    #app-container {
+        display: flex;
+        flex-direction: row;
+        padding-bottom: 0;
+    }
+
+    #map {
+        position: relative;
+        inset: auto;
+        flex: 1;
+    }
+
+    #sidebar,
+    #app-container.screen-search #sidebar,
+    #app-container.screen-intel #sidebar {
+        display: flex;
+        position: relative;
+        inset: auto;
+        width: 280px;
+    }
+
+    #panel {
+        padding: 15px;
+        border-left: 2px solid #00ff00;
+    }
+
+    .panel-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .header-buttons {
+        margin-top: 10px;
+    }
+
+    .panel-section,
+    #app-container.screen-search #search-screen,
+    #app-container.screen-intel #intel-screen {
+        display: block;
+    }
+
+    #app-container.screen-search #map,
+    #app-container.screen-intel #map {
+        display: block;
+    }
+
+    #app-container.screen-search #sys-log,
+    #app-container.screen-intel #sys-log {
+        display: block;
+    }
+
+    .intel-data {
+        font-size: 0.95rem;
+        gap: 8px;
+    }
+
+    #mobile-tabs {
+        display: none;
+    }
 }

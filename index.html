@@ -35,22 +35,37 @@
                         <button id="btn-hud">HUD [OFF]</button>
                     </div>
                 </div>
-                <div class="search-box">
-                    <input type="text" id="search-input" placeholder="Zadejte adresu cíle...">
-                    <button id="btn-search">HLEDAT</button>
+                <div id="search-screen" class="panel-section">
+                    <h3>CIL</h3>
+                    <div class="search-box">
+                        <input type="text" id="search-input" placeholder="Zadejte adresu cíle...">
+                        <button id="btn-search">HLEDAT</button>
+                    </div>
+                    <div class="route-actions">
+                        <button id="btn-start-nav" disabled>START NAV</button>
+                        <button id="btn-stop-nav" disabled>STOP</button>
+                    </div>
                 </div>
-                <div class="intel-data">
-                    <p>STATUS: <span id="status" class="text-green">ONLINE</span></p>
-                    <p>LAT: <span id="pos-lat">--</span></p>
-                    <p>LON: <span id="pos-lon">--</span></p>
-                    <p>SPD: <span id="pos-speed">--</span> km/h</p>
-                    <p>HDG: <span id="pos-heading">--</span>°</p>
+                <div id="intel-screen" class="panel-section">
+                    <h3>TELEMETRIE</h3>
+                    <div class="intel-data">
+                        <p>STATUS: <span id="status" class="text-green">ONLINE</span></p>
+                        <p>LAT: <span id="pos-lat">--</span></p>
+                        <p>LON: <span id="pos-lon">--</span></p>
+                        <p>SPD: <span id="pos-speed">--</span> km/h</p>
+                        <p>HDG: <span id="pos-heading">--</span>°</p>
+                    </div>
                 </div>
             </div>
             <div id="overview-map-container">
                 <div id="overview-map"></div>
             </div>
         </div>
+        <nav id="mobile-tabs" aria-label="Mobilní navigace">
+            <button class="mobile-tab is-active" data-screen="map">MAPA</button>
+            <button class="mobile-tab" data-screen="search">CIL</button>
+            <button class="mobile-tab" data-screen="intel">INFO</button>
+        </nav>
     </div>
     <script src="app.js"></script>
 </body>
