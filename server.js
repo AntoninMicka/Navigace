@@ -156,19 +156,22 @@ let lastRadarsFetch = 0;
 const RADARS_CACHE_TTL = 24 * 60 * 60 * 1000; // Platnost cache: 24 hodin
 
 app.get('/api/radars', async (req, res) => {
+    // Výchozí souřadnice (např. Pardubice / střed ČR)
     const centerLat = Number(req.query.lat) || 49.817;
     const centerLng = Number(req.query.lng) || 15.473;
     const now = Date.now();
 
     if (now - lastRadarsFetch > RADARS_CACHE_TTL || radarsCache.length === 0) {
         try {
-            // Bounding box pro ČR: jih, západ, sever, východ
-            const overpassQuery = `[out:json][timeout:25];node"highway"="speed_camera";out;`;
+            // Správná syntaxe + Bounding box pro ČR (jih, západ, sever, východ)
+            const overpassQuery = `[out:json][timeout:25];node["highway"="speed_camera"](48.55,12.09,51.06,18.86);out;`;
             const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
             
             const response = await fetch(overpassUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                // Overpass API vyžaduje specifičtější User-Agent, aby neblokoval generické requesty
+                headers: { 'User-Agent': 'TacticalNav/1.0 (Node.js backend)' }
             });
+            
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
