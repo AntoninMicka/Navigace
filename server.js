@@ -12,16 +12,20 @@ const HTTPS_PORT = process.env.HTTPS_PORT || 3443;
 // Statické servírování souborů ze složky, kde je spuštěn server
 app.use(express.static(path.join(__dirname)));
 
+function hasValidLngLat(lng, lat) {
+    return Number.isFinite(lng) && Number.isFinite(lat) && lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90;
+}
+
 app.get('/api/route', async (req, res) => {
     const { fromLng, fromLat, toLng, toLat } = req.query;
     const coords = [fromLng, fromLat, toLng, toLat].map(Number);
+    const [startLng, startLat, destLng, destLat] = coords;
 
-    if (coords.some((value) => !Number.isFinite(value))) {
+    if (!hasValidLngLat(startLng, startLat) || !hasValidLngLat(destLng, destLat)) {
         res.status(400).json({ code: 'InvalidCoordinates', message: 'Route coordinates must be valid numbers.' });
         return;
     }
 
-    const [startLng, startLat, destLng, destLat] = coords;
     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
 
     try {
@@ -36,6 +40,32 @@ app.get('/api/route', async (req, res) => {
         res.json(data);
     } catch (err) {
         res.status(502).json({ code: 'RoutingProxyError', message: err.message });
+    }
+});
+
+app.get('/api/nearest', async (req, res) => {
+    const lng = Number(req.query.lng);
+    const lat = Number(req.query.lat);
+
+    if (!hasValidLngLat(lng, lat)) {
+        res.status(400).json({ code: 'InvalidCoordinates', message: 'Nearest coordinates must be valid numbers.' });
+        return;
+    }
+
+    const osrmUrl = `https://router.project-osrm.org/nearest/v1/driving/${lng},${lat}?number=1`;
+
+    try {
+        const response = await fetch(osrmUrl);
+        const data = await response.json();
+
+        if (!response.ok) {
+            res.status(response.status).json(data);
+            return;
+        }
+
+        res.json(data);
+    } catch (err) {
+        res.status(502).json({ code: 'NearestProxyError', message: err.message });
     }
 });
 

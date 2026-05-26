@@ -9,21 +9,15 @@ const map = new maplibregl.Map({
 
 // Značka uživatele (Friendly Unit)
 const userEl = document.createElement('div');
-userEl.style.width = '15px';
-userEl.style.height = '15px';
-userEl.style.backgroundColor = '#00ff00';
-userEl.style.borderRadius = '50%';
-userEl.style.boxShadow = '0 0 10px #00ff00';
-userEl.style.border = '2px solid #fff';
+userEl.className = 'user-marker';
 
-const userMarker = new maplibregl.Marker({ element: userEl })
-    .setLngLat([0, 0])
-    .addTo(map);
+const userMarker = new maplibregl.Marker({ element: userEl, anchor: 'center' });
 
 let isFirstLocation = true;
 let currentLng = null;
 let currentLat = null;
 let hasLocation = false;
+let watchId = null;
 
 // Navigační stavové proměnné
 let isTracking = false; // Sledování aktivní / Preview mod
@@ -33,6 +27,7 @@ let currentDestLat = null;
 let currentRouteCoords = []; // Souřadnice trasy pro výpočet odchylky
 let destinationMarker = null;
 let routePreviewReady = false;
+const MAX_ROUTE_SNAP_DISTANCE_METERS = 100;
 
 // Overview mapa pro velký displej
 let overviewMap = null;
@@ -145,6 +140,14 @@ function getExternalRouteUrl(startLng, startLat, destLng, destLat) {
     return `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
 }
 
+function getExternalNearestUrl(lng, lat) {
+    return `https://router.project-osrm.org/nearest/v1/driving/${lng},${lat}?number=1`;
+}
+
+function isValidLngLat(lng, lat) {
+    return Number.isFinite(lng) && Number.isFinite(lat) && lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90;
+}
+
 async function fetchJson(url, errorPrefix) {
     const response = await fetch(url);
     const contentType = response.headers.get('content-type') || '';
@@ -178,14 +181,59 @@ async function requestRouteData(startLng, startLat, destLng, destLat) {
     }
 }
 
+async function requestNearestData(lng, lat) {
+    const params = new URLSearchParams({ lng, lat });
+
+    try {
+        return await fetchJson(`/api/nearest?${params}`, 'Proxy nearest');
+    } catch (proxyErr) {
+        sysLog(`WARN: Proxy nearest nedostupný (${proxyErr.message}).`);
+        return fetchJson(getExternalNearestUrl(lng, lat), 'OSRM nearest');
+    }
+}
+
+async function snapToRoadNetwork(lng, lat, label) {
+    if (!isValidLngLat(lng, lat)) {
+        throw new Error(`${label}: neplatné souřadnice`);
+    }
+
+    const data = await requestNearestData(lng, lat);
+    const waypoint = data.waypoints && data.waypoints[0];
+
+    if (data.code !== 'Ok' || !waypoint || !Array.isArray(waypoint.location)) {
+        throw new Error(`${label} není na silniční síti`);
+    }
+
+    const [snappedLng, snappedLat] = waypoint.location;
+    const distance = Number(waypoint.distance);
+
+    if (!isValidLngLat(snappedLng, snappedLat) || !Number.isFinite(distance)) {
+        throw new Error(`${label}: neplatný snap na silnici`);
+    }
+
+    if (distance > MAX_ROUTE_SNAP_DISTANCE_METERS) {
+        throw new Error(`${label} je mimo silniční síť (${Math.round(distance)} m)`);
+    }
+
+    if (distance > 15) {
+        sysLog(`${label} připnut na silnici (${Math.round(distance)} m).`);
+    }
+
+    return { lng: snappedLng, lat: snappedLat, distance };
+}
+
 function setDestinationMarker(destLng, destLat) {
+    if (!isValidLngLat(destLng, destLat)) {
+        throw new Error('Cíl má neplatné souřadnice');
+    }
+
     if (!destinationMarker) {
         const el = document.createElement('div');
         el.className = 'destination-marker';
-        destinationMarker = new maplibregl.Marker({ element: el, anchor: 'center' }).addTo(map);
+        destinationMarker = new maplibregl.Marker({ element: el, anchor: 'center' });
     }
 
-    destinationMarker.setLngLat([destLng, destLat]);
+    destinationMarker.setLngLat([destLng, destLat]).addTo(map);
 }
 
 function updateNavigationButtons() {
@@ -228,6 +276,10 @@ function stopNavigation() {
 async function renderRoute(routeGeometry) {
     await waitForMapStyle();
 
+    if (!routeGeometry || routeGeometry.type !== 'LineString' || !Array.isArray(routeGeometry.coordinates)) {
+        throw new Error('Neplatná geometrie trasy');
+    }
+
     const geojson = { type: 'Feature', properties: {}, geometry: routeGeometry };
 
     if (map.getSource('route')) {
@@ -237,13 +289,20 @@ async function renderRoute(routeGeometry) {
 
     map.addSource('route', { type: 'geojson', data: geojson });
 
-    map.addLayer({
+    const routeLayer = {
         id: 'route',
         type: 'line',
         source: 'route',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#00ff00', 'line-width': 5, 'line-opacity': 0.75 }
-    }, getRouteLayerBeforeId());
+    };
+    const beforeId = getRouteLayerBeforeId();
+
+    if (beforeId) {
+        map.addLayer(routeLayer, beforeId);
+    } else {
+        map.addLayer(routeLayer);
+    }
 }
 
 // --- Výpočet trasy (Routing API - OSRM) ---
@@ -256,20 +315,22 @@ async function calculateRoute(destLng, destLat, options = {}) {
     }
     try {
         sysLog('Vyžaduji taktickou trasu...');
-        const data = await requestRouteData(currentLng, currentLat, destLng, destLat);
+        const startPoint = await snapToRoadNetwork(currentLng, currentLat, 'Start');
+        const destPoint = await snapToRoadNetwork(destLng, destLat, 'Cíl');
+        const data = await requestRouteData(startPoint.lng, startPoint.lat, destPoint.lng, destPoint.lat);
         
         if (data.routes && data.routes.length > 0) {
             const route = data.routes[0];
-            
-            currentDestLng = destLng;
-            currentDestLat = destLat;
+
+            setDestinationMarker(destPoint.lng, destPoint.lat);
+            await renderRoute(route.geometry);
+
+            currentDestLng = destPoint.lng;
+            currentDestLat = destPoint.lat;
             currentRouteCoords = route.geometry.coordinates; // Záchyt souřadnic trasy
             routePreviewReady = true;
             isNavigating = startNavigationAfterRoute;
             isTracking = startNavigationAfterRoute;
-            
-            setDestinationMarker(destLng, destLat);
-            await renderRoute(route.geometry);
             updateNavigationButtons();
             
             if (isNavigating) {
@@ -290,6 +351,12 @@ function handlePositionSuccess(position) {
     const coords = position.coords;
     const lng = coords.longitude;
     const lat = coords.latitude;
+
+    if (!isValidLngLat(lng, lat)) {
+        sysLog('WARN: GPS vrátila neplatné souřadnice.');
+        return;
+    }
+
     const speed = (coords.speed * 3.6).toFixed(1) || 0; // m/s na km/h
     let heading = coords.heading ? coords.heading : null;
     
@@ -311,13 +378,15 @@ function handlePositionSuccess(position) {
     hasLocation = true;
 
     // Update UI
+    document.getElementById('status').innerText = 'ONLINE';
+    document.getElementById('status').style.color = '#00ff00';
     document.getElementById('pos-lat').innerText = lat.toFixed(5);
     document.getElementById('pos-lon').innerText = lng.toFixed(5);
     document.getElementById('pos-speed').innerText = speed > 0 ? speed : '0';
     document.getElementById('pos-heading').innerText = displayHeading;
 
     // Update Map
-    userMarker.setLngLat([lng, lat]);
+    userMarker.setLngLat([lng, lat]).addTo(map);
 
     // Update Overview Mapy (pokud existuje)
     if (overviewMap) {
@@ -360,20 +429,33 @@ function handlePositionSuccess(position) {
 // Funkce pro zpracování chyby GPS
 function handlePositionError(error) {
     sysLog(`Chyba GPS: ${error.message}`);
-    document.getElementById('status').innerText = 'GPS LOST';
-    document.getElementById('status').style.color = 'red';
+    document.getElementById('status').innerText = hasLocation ? 'GPS STALE' : 'GPS LOST';
+    document.getElementById('status').style.color = '#ff3333';
 }
 
 const geoOptions = {
     enableHighAccuracy: true,
-    maximumAge: 0,
-    timeout: 5000
+    maximumAge: 10000,
+    timeout: 15000
 };
+
+function startLocationWatch() {
+    if (!('geolocation' in navigator)) {
+        sysLog('ERR: Zařízení nemá GPS.');
+        return;
+    }
+
+    if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+    }
+
+    watchId = navigator.geolocation.watchPosition(handlePositionSuccess, handlePositionError, geoOptions);
+}
 
 // Geolocation API
 if ('geolocation' in navigator) {
     sysLog('GPS senzor detekován.');
-    navigator.geolocation.watchPosition(handlePositionSuccess, handlePositionError, geoOptions);
+    startLocationWatch();
 } else {
     sysLog('ERR: Zařízení nemá GPS.');
 }
@@ -402,11 +484,23 @@ async function requestWakeLock() {
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
         requestWakeLock();
+        startLocationWatch();
+        map.resize();
         // Vynutit okamžitou aktualizaci polohy po probuzení
         if ('geolocation' in navigator) {
             navigator.geolocation.getCurrentPosition(handlePositionSuccess, handlePositionError, geoOptions);
         }
     }
+});
+
+window.addEventListener('focus', () => {
+    startLocationWatch();
+    map.resize();
+});
+
+window.addEventListener('pageshow', () => {
+    startLocationWatch();
+    map.resize();
 });
 
 // Zkusíme rovnou při startu
@@ -545,6 +639,7 @@ function setMobileScreen(screen) {
 
     if (screen === 'map') {
         setTimeout(() => map.resize(), 50);
+        setTimeout(() => map.resize(), 250);
     }
 }
 
