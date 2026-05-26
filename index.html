@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TacNav PoC</title>
+    <link rel="manifest" href="manifest.json">
+    <!-- MapLibre GL JS -->
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <!-- Vlastní styly -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app-container">
+        <!-- Mapa -->
+        <div id="map"></div>
+        
+        <!-- Informační / Taktický panel -->
+        <div id="panel">
+            <div class="panel-header">
+                <h2>TACTICAL INTEL</h2>
+                <button id="btn-hud">HUD MODE [OFF]</button>
+            </div>
+            <div class="intel-data">
+                <p>STATUS: <span id="status" class="text-green">ONLINE</span></p>
+                <p>LAT: <span id="pos-lat">--</span></p>
+                <p>LON: <span id="pos-lon">--</span></p>
+                <p>SPEED: <span id="pos-speed">--</span> km/h</p>
+                <p>HEADING: <span id="pos-heading">--</span>°</p>
+            </div>
+            <div class="sys-messages" id="sys-log">
+                <p>[SYS] Inicializace spojení...</p>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
