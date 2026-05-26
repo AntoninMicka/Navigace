@@ -32,6 +32,39 @@ body, html {
     background-color: #111;
 }
 
+.destination-marker {
+    width: 22px;
+    height: 22px;
+    border: 2px solid #ffcc00;
+    border-radius: 50%;
+    background: rgba(255, 204, 0, 0.15);
+    box-shadow: 0 0 12px rgba(255, 204, 0, 0.85);
+    position: relative;
+}
+
+.destination-marker::before,
+.destination-marker::after {
+    content: "";
+    position: absolute;
+    background: #ffcc00;
+}
+
+.destination-marker::before {
+    left: 50%;
+    top: -6px;
+    width: 2px;
+    height: 30px;
+    transform: translateX(-50%);
+}
+
+.destination-marker::after {
+    left: -6px;
+    top: 50%;
+    width: 30px;
+    height: 2px;
+    transform: translateY(-50%);
+}
+
 #sidebar {
     display: flex;
     flex-direction: column;

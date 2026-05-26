@@ -12,6 +12,33 @@ const HTTPS_PORT = process.env.HTTPS_PORT || 3443;
 // Statické servírování souborů ze složky, kde je spuštěn server
 app.use(express.static(path.join(__dirname)));
 
+app.get('/api/route', async (req, res) => {
+    const { fromLng, fromLat, toLng, toLat } = req.query;
+    const coords = [fromLng, fromLat, toLng, toLat].map(Number);
+
+    if (coords.some((value) => !Number.isFinite(value))) {
+        res.status(400).json({ code: 'InvalidCoordinates', message: 'Route coordinates must be valid numbers.' });
+        return;
+    }
+
+    const [startLng, startLat, destLng, destLat] = coords;
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+
+    try {
+        const response = await fetch(osrmUrl);
+        const data = await response.json();
+
+        if (!response.ok) {
+            res.status(response.status).json(data);
+            return;
+        }
+
+        res.json(data);
+    } catch (err) {
+        res.status(502).json({ code: 'RoutingProxyError', message: err.message });
+    }
+});
+
 // Fallback pro SPA / PWA - všechny neznámé routy pošlou index.html
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));

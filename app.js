@@ -30,6 +30,7 @@ let isTracking = true; // Sledování aktivní / Preview mod
 let currentDestLng = null;
 let currentDestLat = null;
 let currentRouteCoords = []; // Souřadnice trasy pro výpočet odchylky
+let destinationMarker = null;
 
 // Overview mapa pro velký displej
 let overviewMap = null;
@@ -111,17 +112,110 @@ function distToSegmentInMeters(p, v, w) {
     return Math.sqrt(distToSegmentSquared(p, v, w)) * 111320;
 }
 
+function waitForMapStyle() {
+    if (map.isStyleLoaded()) {
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+        const finishWhenReady = () => {
+            if (map.isStyleLoaded()) {
+                map.off('load', finishWhenReady);
+                map.off('styledata', finishWhenReady);
+                map.off('idle', finishWhenReady);
+                resolve();
+            }
+        };
+
+        map.on('load', finishWhenReady);
+        map.on('styledata', finishWhenReady);
+        map.on('idle', finishWhenReady);
+        finishWhenReady();
+    });
+}
+
+function getRouteLayerBeforeId() {
+    const preferredLayers = ['waterway-name', 'road-label', 'place-label'];
+    return preferredLayers.find((id) => map.getLayer(id));
+}
+
+function getExternalRouteUrl(startLng, startLat, destLng, destLat) {
+    return `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+}
+
+async function fetchJson(url, errorPrefix) {
+    const response = await fetch(url);
+    const contentType = response.headers.get('content-type') || '';
+
+    if (!contentType.includes('application/json')) {
+        throw new Error(`${errorPrefix}: neplatná odpověď`);
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(`${errorPrefix}: ${data.code || response.status}`);
+    }
+
+    return data;
+}
+
+async function requestRouteData(startLng, startLat, destLng, destLat) {
+    const params = new URLSearchParams({
+        fromLng: startLng,
+        fromLat: startLat,
+        toLng: destLng,
+        toLat: destLat
+    });
+
+    try {
+        return await fetchJson(`/api/route?${params}`, 'Proxy');
+    } catch (proxyErr) {
+        sysLog(`WARN: Proxy routing nedostupný (${proxyErr.message}).`);
+        return fetchJson(getExternalRouteUrl(startLng, startLat, destLng, destLat), 'OSRM');
+    }
+}
+
+function setDestinationMarker(destLng, destLat) {
+    if (!destinationMarker) {
+        const el = document.createElement('div');
+        el.className = 'destination-marker';
+        destinationMarker = new maplibregl.Marker({ element: el, anchor: 'center' }).addTo(map);
+    }
+
+    destinationMarker.setLngLat([destLng, destLat]);
+}
+
+async function renderRoute(routeGeometry) {
+    await waitForMapStyle();
+
+    const geojson = { type: 'Feature', properties: {}, geometry: routeGeometry };
+
+    if (map.getSource('route')) {
+        map.getSource('route').setData(geojson);
+        return;
+    }
+
+    map.addSource('route', { type: 'geojson', data: geojson });
+
+    map.addLayer({
+        id: 'route',
+        type: 'line',
+        source: 'route',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#00ff00', 'line-width': 5, 'line-opacity': 0.75 }
+    }, getRouteLayerBeforeId());
+}
+
 // --- Výpočet trasy (Routing API - OSRM) ---
 async function calculateRoute(destLng, destLat) {
-    if (!currentLng || !currentLat) {
+    if (currentLng === null || currentLat === null) {
         sysLog('WARN: Nelze vypočítat trasu, chybí vlastní poloha.');
         return;
     }
     try {
         sysLog('Vyžaduji taktickou trasu...');
-        // Dotaz na veřejný OSRM server pro navigaci aut
-        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${currentLng},${currentLat};${destLng},${destLat}?overview=full&geometries=geojson`);
-        const data = await response.json();
+        const data = await requestRouteData(currentLng, currentLat, destLng, destLat);
         
         if (data.routes && data.routes.length > 0) {
             const route = data.routes[0];
@@ -130,22 +224,12 @@ async function calculateRoute(destLng, destLat) {
             currentDestLat = destLat;
             currentRouteCoords = route.geometry.coordinates; // Záchyt souřadnic trasy
             
-            const geojson = { type: 'Feature', properties: {}, geometry: route.geometry };
-            
-            if (map.getSource('route')) {
-                map.getSource('route').setData(geojson);
-            } else {
-                map.addSource('route', { type: 'geojson', data: geojson });
-                map.addLayer({
-                    id: 'route',
-                    type: 'line',
-                    source: 'route',
-                    layout: { 'line-join': 'round', 'line-cap': 'round' },
-                    paint: { 'line-color': '#00ff00', 'line-width': 5, 'line-opacity': 0.7 }
-                }, 'waterway-name'); // Vykreslit pod texty
-            }
+            setDestinationMarker(destLng, destLat);
+            await renderRoute(route.geometry);
             
             sysLog(`Trasa nalezena: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min.`);
+        } else {
+            sysLog(`WARN: Trasa nenalezena (${data.code || 'bez odpovědi'}).`);
         }
     } catch (err) {
         sysLog(`ERR: Výpočet trasy selhal (${err.message})`);
@@ -217,7 +301,9 @@ function handlePositionSuccess(position) {
         if (minMeters > 50) { // Tolerance 50 metrů
             sysLog(`WARN: Mimo trasu (${Math.round(minMeters)}m). Přepočítávám...`);
             currentRouteCoords = []; // Vymazat, aby se nepřepočítávalo v nekonečné smyčce
-            calculateRoute(currentDestLng, currentDestLat);
+            if (currentDestLng !== null && currentDestLat !== null) {
+                calculateRoute(currentDestLng, currentDestLat);
+            }
         }
     }
 }
