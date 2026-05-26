@@ -17,6 +17,7 @@ body, html {
     flex-direction: column;
     height: 100vh;
     width: 100vw;
+    position: relative;
 }
 
 /* Responzivní layout: Na mobilech panel dole, na desktopu vpravo */
@@ -31,38 +32,130 @@ body, html {
     background-color: #111;
 }
 
-#panel {
+#sidebar {
     display: flex;
     flex-direction: column;
-    padding: 15px;
+    z-index: 20;
+}
+
+#panel {
+    padding: 8px 12px;
     background: rgba(5, 15, 5, 0.95);
     border-top: 2px solid #00ff00;
     box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
 }
 
 @media (min-width: 768px) {
+    #app-container {
+        flex-direction: row;
+    }
+    #sidebar {
+        width: 240px;
+    }
     #panel {
-        width: 320px;
+        padding: 15px;
         border-top: none;
         border-left: 2px solid #00ff00;
     }
 }
 
 h2 {
+    display: none; /* Skryto na mobilu pro minimalismus */
     margin: 0 0 15px 0;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     text-shadow: 0 0 5px #00ff00;
+}
+
+@media (min-width: 768px) {
+    h2 { display: block; }
 }
 
 .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-bottom: 8px;
 }
 
 .header-buttons {
     display: flex;
     gap: 8px;
+}
+
+@media (min-width: 768px) {
+    .panel-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .header-buttons {
+        margin-top: 10px;
+    }
+}
+
+/* Minimalistické skládání dat na mobilu */
+.intel-data {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    font-size: 0.85rem;
+}
+
+.intel-data p {
+    margin: 0;
+}
+
+@media (min-width: 768px) {
+    .intel-data {
+        flex-direction: column;
+        font-size: 0.95rem;
+        gap: 8px 0;
+    }
+}
+
+/* Logy plovoucí přes mapu */
+#sys-log {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+    pointer-events: none; /* Kliknutí propadne skrz na mapu */
+    color: rgba(0, 255, 0, 0.8);
+    font-size: 0.8rem;
+    text-shadow: 1px 1px 3px #000;
+    width: 70%;
+}
+
+@media (min-width: 768px) {
+    #sys-log {
+        font-size: 0.9rem;
+        width: 300px;
+    }
+}
+
+#sys-log p {
+    margin: 2px 0;
+}
+
+.logs-hidden {
+    display: none;
+}
+
+#overview-map-container {
+    display: none; /* Skryto na mobilu a tabletu */
+    flex: 1;
+    border-left: 2px solid #00ff00;
+    border-top: 2px solid #00ff00;
+}
+
+#overview-map {
+    width: 100%;
+    height: 100%;
+}
+
+@media (min-width: 1200px) {
+    #overview-map-container {
+        display: block;
+    }
 }
 
 button {

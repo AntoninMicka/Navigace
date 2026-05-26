@@ -15,27 +15,36 @@
 </head>
 <body>
     <div id="app-container">
+        <!-- Systémové logy plovoucí přes mapu -->
+        <div id="sys-log">
+            <p>[SYS] Inicializace spojení...</p>
+        </div>
+
         <!-- Mapa -->
         <div id="map"></div>
         
-        <!-- Informační / Taktický panel -->
-        <div id="panel">
-            <div class="panel-header">
-                <h2>TACTICAL INTEL</h2>
-                <div class="header-buttons">
-                    <button id="btn-locate">[ CENTER ]</button>
-                    <button id="btn-hud">HUD [OFF]</button>
+        <!-- Boční/spodní panel -->
+        <div id="sidebar">
+            <!-- Informační / Taktický panel -->
+            <div id="panel">
+                <div class="panel-header">
+                    <h2>TACTICAL INTEL</h2>
+                    <div class="header-buttons">
+                        <button id="btn-log-toggle">LOG [ON]</button>
+                        <button id="btn-locate">[ CENTER ]</button>
+                        <button id="btn-hud">HUD [OFF]</button>
+                    </div>
+                </div>
+                <div class="intel-data">
+                    <p>STATUS: <span id="status" class="text-green">ONLINE</span></p>
+                    <p>LAT: <span id="pos-lat">--</span></p>
+                    <p>LON: <span id="pos-lon">--</span></p>
+                    <p>SPD: <span id="pos-speed">--</span> km/h</p>
+                    <p>HDG: <span id="pos-heading">--</span>°</p>
                 </div>
             </div>
-            <div class="intel-data">
-                <p>STATUS: <span id="status" class="text-green">ONLINE</span></p>
-                <p>LAT: <span id="pos-lat">--</span></p>
-                <p>LON: <span id="pos-lon">--</span></p>
-                <p>SPEED: <span id="pos-speed">--</span> km/h</p>
-                <p>HEADING: <span id="pos-heading">--</span>°</p>
-            </div>
-            <div class="sys-messages" id="sys-log">
-                <p>[SYS] Inicializace spojení...</p>
+            <div id="overview-map-container">
+                <div id="overview-map"></div>
             </div>
         </div>
     </div>

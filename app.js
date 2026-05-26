@@ -3,8 +3,8 @@ const map = new maplibregl.Map({
     container: 'map',
     style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', // Tmavý vektorový styl
     center: [15.473, 49.817], // Střed ČR
-    zoom: 7,
-    pitch: 45, // Taktický náklon 3D
+    zoom: 6,
+    pitch: 0, // Začínáme s plochou mapou (overview)
 });
 
 // Značka uživatele (Friendly Unit)
@@ -25,10 +25,21 @@ let currentLng = null;
 let currentLat = null;
 let hasLocation = false;
 
+// Overview mapa pro velký displej
+let overviewMap = null;
+let overviewUserMarker = null;
+
 // Logovací funkce do panelu
 function sysLog(msg) {
     const log = document.getElementById('sys-log');
-    log.innerHTML = `<p>[SYS] ${msg}</p>` + log.innerHTML;
+    const p = document.createElement('p');
+    p.innerText = `[SYS] ${msg}`;
+    log.prepend(p);
+    
+    // Omezit logy zobrazené na mapě na maximálně posledních 5 zpráv
+    while (log.children.length > 5) {
+        log.removeChild(log.lastChild);
+    }
 }
 
 // --- BFT: Blue Force Tracking ---
@@ -88,6 +99,12 @@ function handlePositionSuccess(position) {
 
     // Update Map
     userMarker.setLngLat([lng, lat]);
+
+    // Update Overview Mapy (pokud existuje)
+    if (overviewMap) {
+        overviewMap.setCenter([lng, lat]);
+        overviewUserMarker.setLngLat([lng, lat]);
+    }
 
     if (isFirstLocation) {
         map.jumpTo({ center: [lng, lat], zoom: 16 });
@@ -174,7 +191,7 @@ function createBftMarker(u) {
 // Centrování mapy (Tlačítko CENTER)
 document.getElementById('btn-locate').addEventListener('click', () => {
     if (hasLocation) {
-        map.flyTo({ center: [currentLng, currentLat], zoom: 16, duration: 1500 });
+        map.flyTo({ center: [currentLng, currentLat], zoom: 16, pitch: 45, duration: 1500 });
         sysLog('Mapa centrována na vlastní polohu.');
     } else {
         sysLog('WARN: Pozice zatím není známa.');
@@ -183,6 +200,23 @@ document.getElementById('btn-locate').addEventListener('click', () => {
     if (!wakeLock) {
         requestWakeLock();
     }
+});
+
+// Přepnutí do overview režimu při manuálním pohybu mapou
+map.on('dragstart', () => {
+    map.easeTo({ pitch: 0, duration: 500 });
+});
+
+// --- UI Toggles ---
+
+// Skrývání logů
+const logToggleBtn = document.getElementById('btn-log-toggle');
+const sysLogEl = document.getElementById('sys-log');
+let logsVisible = true;
+logToggleBtn.addEventListener('click', () => {
+    logsVisible = !logsVisible;
+    sysLogEl.classList.toggle('logs-hidden', !logsVisible);
+    logToggleBtn.innerText = logsVisible ? 'LOG [ON]' : 'LOG [OFF]';
 });
 
 // HUD Modulace
