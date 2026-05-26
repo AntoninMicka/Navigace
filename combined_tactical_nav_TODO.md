@@ -2,25 +2,25 @@
 
 ## 1. Vize a Koncept
 Vytvořit komunitní navigační/dopravní aplikaci inspirovanou vojenskými a cyberpunk systémy (ATAK, MIL-STD-2525).
-Aplikace bude buď lehký overlay (např. nad OsmAnd) nebo plnohodnotná mapová vrstva s vlastní navigací.
+Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohlížeči bez nutnosti složitého backendu.
 
 **Cílové platformy:**
-- Android app (případně i HUD režim)
-- Android Auto
-- Volitelný PWA / Web klient pro dispečink (budoucnost)
+- PWA (instalovatelné na Android/iOS/Desktop přes prohlížeč)
+- HUD režim (zrcadlené webové UI)
+- Zobrazitelné v jakémkoliv moderním prohlížeči
 
 ---
 
 ## 2. Architektura a Rozhodnutí
-### Koncept aplikace
-- [ ] **Rozhodnout:** Overlay companion app (spolupráce s OsmAnd) NEBO samostatná navigace?
-- [ ] **Technologie (Frontend):** Android native / Qt/QML (doporučeno) / Flutter / PWA
-- [ ] **Mapový engine (pokud standalone):** OsmAnd (přes API), MapLibre GL, OpenRouteService, Valhalla, GraphHopper
+### Frontend (PWA)
+- [x] **Rozhodnutí:** Samostatná PWA aplikace
+- [x] **Technologie:** HTML/JS/CSS (Vanilla nebo Vue/React) + Service Workers
+- [x] **Mapový engine:** MapLibre GL JS (ideální pro vektorové "dark/tactical" styly) nebo OpenLayers
 
-### Backend (Crowdsourcing & Agregace)
-- [ ] **Jádro:** Node.js nebo Python FastAPI
-- [ ] **Databáze:** PostgreSQL + PostGIS (geodata), Redis (cache)
-- [ ] **Realtime:** MQTT / WebSocket pro synchronizaci událostí
+### Backend (PWA + Realtime Server)
+- [x] **Frontend Jádro:** Statický hosting (Vercel, GitHub Pages) pro rychlé načtení PWA
+- [ ] **Úložiště:** Klientské `IndexedDB` a `Cache API` pro offline radary a mapové dlaždice
+- [ ] **Realtime sync (BFT & Eventy):** Lehký Node.js (WebSockets/Socket.io) nebo MQTT broker (např. Mosquitto) pro Blue Force Tracking (trakování přátel) a crowdsourcing událostí
 
 ---
 
@@ -28,6 +28,7 @@ Aplikace bude buď lehký overlay (např. nad OsmAnd) nebo plnohodnotná mapová
 ### Oficiální API (Government/Global)
 - [ ] DATEX II integrace
 - [ ] NDIC / Dopravniinfo.cz / Městská open data
+- [ ] Vyřešit CORS pro volání API z prohlížeče (případně použít free CORS proxy pro MVP)
 - [ ] Parser + polling + lokální cache
 
 ### Databáze radarů
@@ -56,13 +57,15 @@ Aplikace bude buď lehký overlay (např. nad OsmAnd) nebo plnohodnotná mapová
 | Uzavírka | Route denial | Obstruction |
 | Čerpací stanice | Refuel point / Logistics | Logistics point |
 
+*Poznámka: Spřátelené jednotky (přátelé) budou na mapě trakovány v reálném čase prostřednictvím modulu BFT (Blue Force Tracking).*
+
 ---
 
 ## 5. Navigační a Event Engine
 ### Taktická Navigace
 - [ ] Výpočet trasy, ETA, alternativní trasy
 - [ ] Dynamické přesměrování (hlášení: *"Primary route compromised"*)
-- [ ] Podpora offline mapových podkladů
+- [ ] Podpora offline mapových podkladů (cachování vektorových dlaždic přes Service Worker)
 
 ### Lokalizace a Filtrování Eventů
 - [ ] GPS tracking & detekce směru (heading detection)
@@ -80,10 +83,12 @@ Aplikace bude buď lehký overlay (např. nad OsmAnd) nebo plnohodnotná mapová
 - [ ] Monospace / military typografie
 - [ ] CRT-inspired retro téma (volitelné)
 
-### Overlay & HUD (při použití s OsmAnd)
-- [ ] Floating overlay a žádost o Android permissions
-- [ ] Minimal distraction mode
-- [ ] HUD režim pro jízdu v noci (zrcadlení na sklo, bearing indikátory)
+### UI Komponenty a HUD
+- [ ] App shell struktura pro PWA (Fullscreen zážitek)
+- [ ] Tlačítko pro HUD mód (CSS `transform: scaleY(-1);` pro odraz na čelní sklo)
+- [ ] Wake Lock API implementace (`navigator.wakeLock`) aby displej nezhasínal během jízdy
+- [ ] Plně responzivní layout (CSS Grid / Flexbox, Mobile-first)
+- [ ] Adaptivní informační panely (na malém displeji dynamicky vyjíždějící/skryté, na velkém trvalé zobrazení po stranách)
 
 ---
 
@@ -101,18 +106,13 @@ Aplikace bude buď lehký overlay (např. nad OsmAnd) nebo plnohodnotná mapová
 
 ---
 
-## 8. Integrace na Android a Systém
+## 8. PWA a Webová Integrace
 ### Jádro
-- [ ] Foreground service
-- [ ] Auto-start po rebootu
-- [ ] Vynucení/řešení battery optimization (Doze mode)
-- [ ] Background location tracking
-- [ ] Android Auto (Zjednodušené taktické UI, velké ovládací prvky, voice-first)
+- [ ] `manifest.json` s ikonami a `display: standalone`
+- [ ] Service Worker pro offline podporu a caching
+- [ ] Geolocation API (`navigator.geolocation.watchPosition`) s handlingem ztráty signálu
+- [ ] *Omezení:* Android Auto nepodporuje čisté PWA - nutno počítat s použitím přímo na telefonu/tabletu na palubní desce
 
-### Propojení s OsmAnd (pokud použito jako companion)
-- [ ] Intent API & deeplinky
-- [ ] Vkládání externích POI do mapy
-- [ ] Custom alerts pro OsmAnd
 
 ---
 
@@ -135,16 +135,14 @@ Aplikace bude buď lehký overlay (např. nad OsmAnd) nebo plnohodnotná mapová
 - [ ] Vtipy o dronovém průzkumu (Drone reconnaissance jokes)
 - [ ] "GPS degraded" mód (simulace výpadků/rušení)
 - [ ] Taktický hudební podkres (Tactical soundtrack mode)
-- [ ] "Convoy mode" pro bezpečné cestování ve skupině přátel
+- [ ] BFT (Blue Force Tracking) / "Convoy mode" pro bezpečné cestování a vizualizaci pozic ve skupině přátel
 
 ---
 
 ## 11. Rozšířené Funkce a Budoucnost (Fáze 4+)
 - [ ] AI-generované taktické brífinky před jízdou
 - [ ] Predikce dopravy a overlay hrozeb počasí (Weather threat overlays)
-- [ ] Car-to-car mesh komunikace
-- [ ] Interoperabilita s reálným ATAKem (experimentálně)
-- [ ] SDR / radio integrace (experimentálně)
+- [ ] WebRTC car-to-car peer-to-peer komunikace pro varování nablízko
 
 ---
 
@@ -164,21 +162,21 @@ Aplikace bude buď lehký overlay (např. nad OsmAnd) nebo plnohodnotná mapová
 
 ## 13. Sloučená Roadmapa (MVP)
 ### Fáze 1 (Základní senzory)
-- [ ] Získávání GPS polohy
-- [ ] Offline databáze radarů (importovaná statická data)
+- [ ] Získávání GPS polohy přes Web API (`watchPosition`)
+- [ ] Databáze radarů v IndexedDB
 - [ ] Jednoduché audio alerty na POI
 
 ### Fáze 2 (Data a UI)
-- [ ] DATEX II + stahování nehod a uzavírek
-- [ ] Overlay HUD nebo základní OSM/MapLibre mapa
-- [ ] Implementace MILSTD ikon a UI
+- [ ] Zobrazení MapLibre GL JS mapy s dark/tactical stylem
+- [ ] Načítání veřejných API (doprava/nehody)
+- [ ] Implementace MILSTD ikon jako mapových markerů
 
 ### Fáze 3 (Taktický feeling)
 - [ ] Theme systém (CRT, barvy, fonty)
 - [ ] Smart filtering (protisměr, relevance na silnici)
-- [ ] Pokročilý Audio systém (Voice packy, TTS)
+- [ ] Pokročilý Audio systém (Web Audio API, TTS přes `window.speechSynthesis`)
 
-### Fáze 4 (Komunita a Android Auto)
+### Fáze 4 (Komunita)
 - [ ] Komunitní backend pro real-time sdílení
+- [ ] BFT (Blue Force Tracking) – systém skupin pro živé sdílení polohy s přáteli
 - [ ] Gamifikace (Achievementy, Reputation)
-- [ ] Android Auto integrace
