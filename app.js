@@ -73,6 +73,17 @@ function setAssetType(type) {
 
     currentAssetType = nextType;
     localStorage.setItem('tacnav_asset_type', currentAssetType);
+
+    // Odeslat update ikony ostatním přes BFT
+    if (socket && hasLocation) {
+        socket.emit('position_update', { 
+            lat: currentLat, 
+            lng: currentLng, 
+            speed: document.getElementById('pos-speed').innerText, 
+            heading: document.getElementById('pos-heading').innerText,
+            assetType: currentAssetType 
+        });
+    }
 }
 
 // --- BFT: Blue Force Tracking ---
@@ -88,19 +99,28 @@ if (socket) {
         // Odstranění těch, co se odpojili
         for (let id in bftMarkers) {
             if (!activeIds.has(id)) {
-                bftMarkers[id].remove();
+                bftMarkers[id].marker.remove();
                 delete bftMarkers[id];
             }
         }
 
-        // Aktualizace pozic ostatních (svoji vlastní ignorujeme, tu si vykreslujeme sami zeleně)
+        // Aktualizace pozic ostatních
         users.forEach(u => {
             if (u.id === socket.id || !u.lat || !u.lng) return;
 
             if (!bftMarkers[u.id]) {
                 createBftMarker(u);
             } else {
-                bftMarkers[u.id].setLngLat([u.lng, u.lat]);
+                bftMarkers[u.id].marker.setLngLat([u.lng, u.lat]);
+                bftMarkers[u.id].el.querySelector('.bft-spd').innerText = `SPD ${u.speed || 0}`;
+                bftMarkers[u.id].el.querySelector('.bft-hdg').innerText = `HDG ${u.heading || '--'}`;
+                
+                const currentClass = Array.from(bftMarkers[u.id].el.classList).find(c => c.startsWith('app6-asset-'));
+                const newClass = `app6-asset-${u.assetType || 'car'}`;
+                if (currentClass !== newClass) {
+                    if (currentClass) bftMarkers[u.id].el.classList.remove(currentClass);
+                    bftMarkers[u.id].el.classList.add(newClass);
+                }
             }
         });
     });
@@ -495,7 +515,7 @@ function handlePositionSuccess(position) {
 
     // Odeslání polohy na BFT server
     if (socket) {
-        socket.emit('position_update', { lat, lng, speed: displaySpeed, heading: displayHeading });
+        socket.emit('position_update', { lat, lng, speed: displaySpeed, heading: displayHeading, assetType: currentAssetType });
     }
 
     // Uložení aktuální polohy pro centrování
@@ -647,17 +667,25 @@ window.addEventListener('pageshow', () => {
 // Zkusíme rovnou při startu
 requestWakeLock();
 
-// Pomocná funkce pro vytvoření modré "Friendly Unit" značky
+// Pomocná funkce pro vytvoření APP-6 BFT značky
 function createBftMarker(u) {
     const el = document.createElement('div');
-    el.style.width = '15px';
-    el.style.height = '15px';
-    el.style.backgroundColor = '#0088ff'; // Taktická BFT modrá
-    el.style.borderRadius = '50%';
-    el.style.boxShadow = '0 0 10px #0088ff';
-    el.style.border = '2px solid #fff';
+    el.className = `app6-marker app6-asset-${u.assetType || 'car'}`;
+    el.innerHTML = `
+        <div class="app6-symbol">
+            <div class="app6-frame app6-equipment-frame">
+                <div class="app6-asset-icon"></div>
+            </div>
+            <div class="app6-identity">${(u.id || 'BFT').substring(0, 4).toUpperCase()}</div>
+        </div>
+        <div class="app6-data-block">
+            <div class="bft-spd">SPD ${u.speed || 0}</div>
+            <div class="bft-hdg">HDG ${u.heading || '--'}</div>
+        </div>
+    `;
     
-    bftMarkers[u.id] = new maplibregl.Marker({ element: el }).setLngLat([u.lng, u.lat]).addTo(map);
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([u.lng, u.lat]).addTo(map);
+    bftMarkers[u.id] = { marker, el };
 }
 
 // Centrování mapy (Tlačítko CENTER)
