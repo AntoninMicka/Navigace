@@ -69,6 +69,104 @@ app.get('/api/nearest', async (req, res) => {
     }
 });
 
+// --- Cache pro reálné dopravní události (Geoportál ŘSD / NDIC) ---
+let eventsCache = [];
+let lastEventsFetch = 0;
+const EVENTS_CACHE_TTL = 5 * 60 * 1000; // Platnost cache: 5 minut
+
+app.get('/api/events', async (req, res) => {
+    const centerLat = Number(req.query.lat) || 49.817;
+    const centerLng = Number(req.query.lng) || 15.473;
+    const now = Date.now();
+
+    // Pokud je cache prázdná nebo starší než 5 minut, stáhneme čerstvá data z ŘSD
+    if (now - lastEventsFetch > EVENTS_CACHE_TTL) {
+        try {
+            // Geoportál ŘSD nabízí ArcGIS REST API, které umí vracet rovnou GeoJSON (f=geojson).
+            // Použijeme query `where=1=1` pro získání všech aktuálních záznamů.
+            const rsdAccidentsUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Nehody/MapServer/0/query?where=1%3D1&outFields=*&f=geojson';
+            const rsdClosuresUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Uzavirky_a_omezeni/MapServer/0/query?where=1%3D1&outFields=*&f=geojson';
+
+            // Pomocná funkce pro bezpečné stažení a parsování
+            const fetchSafeJson = async (url) => {
+                const response = await fetch(url, {
+                    headers: { 
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'application/geo+json, application/json, text/plain, */*'
+                    }
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const text = await response.text();
+                if (!text || !text.trim()) throw new Error('Prázdná odpověď');
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    throw new Error(`Neplatný JSON. Začátek: ${text.substring(0, 100).replace(/\n/g, '')}`);
+                }
+            };
+
+            // Paralelní stahování obou feedů
+            const [accidentsRes, closuresRes] = await Promise.allSettled([
+                fetchSafeJson(rsdAccidentsUrl),
+                fetchSafeJson(rsdClosuresUrl)
+            ]);
+
+            let newEvents = [];
+
+            if (accidentsRes.status === 'fulfilled' && accidentsRes.value.features) {
+                newEvents = newEvents.concat(accidentsRes.value.features.map(f => ({
+                    id: f.properties?.OBJECTID || Math.random().toString(36).substring(2),
+                    type: 'accident',
+                    lng: f.geometry?.coordinates?.[0] || 0,
+                    lat: f.geometry?.coordinates?.[1] || 0,
+                    description: f.properties?.POPIS || 'Dopravní nehoda (ŘSD)'
+                })));
+            } else if (accidentsRes.status === 'rejected') {
+                console.log(`[WARN] Stažení nehod z ŘSD selhalo: ${accidentsRes.reason.message}`);
+            }
+
+            if (closuresRes.status === 'fulfilled' && closuresRes.value.features) {
+                newEvents = newEvents.concat(closuresRes.value.features.map(f => ({
+                    id: f.properties?.OBJECTID || Math.random().toString(36).substring(2),
+                    type: 'closure',
+                    lng: f.geometry?.coordinates?.[0] || 0,
+                    lat: f.geometry?.coordinates?.[1] || 0,
+                    description: f.properties?.POPIS || 'Uzavírka / Omezení (ŘSD)'
+                })));
+            } else if (closuresRes.status === 'rejected') {
+                console.log(`[WARN] Stažení uzavírek z ŘSD selhalo: ${closuresRes.reason.message}`);
+            }
+
+            if (newEvents.length > 0) {
+                eventsCache = newEvents;
+                lastEventsFetch = now;
+                console.log(`[SYS] Stáhnuto ${eventsCache.length} událostí z Geoportálu ŘSD.`);
+            } else {
+                console.log('[WARN] Z ŘSD se nepodařilo stáhnout žádná data. Zůstává předchozí stav.');
+            }
+        } catch (err) {
+            console.log(`[WARN] Chyba při stahování z ŘSD: ${err.message}`);
+        }
+    }
+
+    // Odeslat filtrovaná data, pokud máme něco v cache
+    if (eventsCache.length > 0) {
+        // Ořízneme odesílaná data pouze na události v okruhu zhruba 50 km od uživatele,
+        // abychom do mobilu nepřenášeli tisíce nehod z druhého konce republiky.
+        const localEvents = eventsCache.filter(evt => {
+            return Math.abs(evt.lat - centerLat) < 0.5 && Math.abs(evt.lng - centerLng) < 0.5;
+        });
+        res.json(localEvents);
+        return;
+    }
+
+    // --- Fallback na testovací Mock data (pokud není API klíč nastaven) ---
+    res.json([
+        { id: 'evt-mock-1', type: 'accident', lat: centerLat + 0.005, lng: centerLng + 0.005, description: 'Nehoda (2 vozidla) [MOCK]' },
+        { id: 'evt-mock-2', type: 'closure', lat: centerLat - 0.005, lng: centerLng - 0.005, description: 'Uzavírka (Práce na silnici) [MOCK]' }
+    ]);
+});
+
 // Fallback pro SPA / PWA - všechny neznámé routy pošlou index.html
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));

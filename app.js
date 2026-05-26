@@ -24,7 +24,7 @@ userEl.innerHTML = `
     </div>
 `;
 
-const userMarker = new maplibregl.Marker({ element: userEl, anchor: 'center' });
+const userMarker = new maplibregl.Marker({ element: userEl, anchor: 'center' }).setLngLat([15.473, 49.817]).addTo(map);
 const APP6_ASSET_TYPES = ['person', 'bicycle', 'motorcycle', 'car', 'hq'];
 const isAdminView = new URLSearchParams(window.location.search).get('admin') === '1'
     || localStorage.getItem('tacnav_admin') === '1';
@@ -35,31 +35,6 @@ let currentLng = null;
 let currentLat = null;
 let hasLocation = false;
 let watchId = null;
-
-function updateSelfMarker(lng, lat, heading = '--', isStale = false) {
-    if (!isValidLngLat(lng, lat)) return;
-
-    userEl.classList.toggle('app6-marker-stale', isStale);
-    userMarker.setLngLat([lng, lat]).addTo(map);
-    document.getElementById('self-pos-lat').innerText = `LAT ${lat.toFixed(5)}`;
-    document.getElementById('self-pos-lon').innerText = `LON ${lng.toFixed(5)}`;
-    document.getElementById('self-pos-hdg').innerText = `HDG ${heading}`;
-}
-
-function restoreLastSelfPosition() {
-    try {
-        const lastPosition = JSON.parse(localStorage.getItem('tacnav_last_self_position') || 'null');
-        if (!lastPosition || !isValidLngLat(lastPosition.lng, lastPosition.lat)) return;
-
-        currentLng = lastPosition.lng;
-        currentLat = lastPosition.lat;
-        hasLocation = true;
-        updateSelfMarker(currentLng, currentLat, lastPosition.heading || '--', true);
-        sysLog('Obnovena poslední známá poloha.');
-    } catch (err) {
-        localStorage.removeItem('tacnav_last_self_position');
-    }
-}
 
 // Navigační stavové proměnné
 let isTracking = false; // Sledování aktivní / Preview mod
@@ -87,8 +62,6 @@ function sysLog(msg) {
         log.removeChild(log.lastChild);
     }
 }
-
-restoreLastSelfPosition();
 
 function setAssetType(type) {
     const safeType = APP6_ASSET_TYPES.includes(type) ? type : 'car';
@@ -557,10 +530,12 @@ function handlePositionSuccess(position) {
     document.getElementById('pos-lon').innerText = lng.toFixed(5);
     document.getElementById('pos-speed').innerText = speedKmh > 0 ? displaySpeed : '0';
     document.getElementById('pos-heading').innerText = displayHeading;
+    document.getElementById('self-pos-lat').innerText = `LAT ${lat.toFixed(5)}`;
+    document.getElementById('self-pos-lon').innerText = `LON ${lng.toFixed(5)}`;
+    document.getElementById('self-pos-hdg').innerText = `HDG ${displayHeading}`;
 
     // Update Map
-    updateSelfMarker(lng, lat, displayHeading, false);
-    localStorage.setItem('tacnav_last_self_position', JSON.stringify({ lng, lat, heading: displayHeading }));
+    userMarker.setLngLat([lng, lat]);
 
     // Update Overview Mapy (pokud existuje)
     if (overviewMap) {
@@ -812,6 +787,57 @@ function renderPOIs() {
 }
 
 renderPOIs(); // Vykreslit POI při startu aplikace
+
+// --- Dopravní události (Events / Incidents) ---
+const eventMarkers = {};
+
+async function fetchAndRenderEvents() {
+    try {
+        const queryParams = (currentLng !== null && currentLat !== null) ? `?lng=${currentLng}&lat=${currentLat}` : '';
+        const response = await fetch(`/api/events${queryParams}`);
+        const events = await response.json();
+        let newEventsCount = 0;
+
+        events.forEach(evt => {
+            if (!eventMarkers[evt.id]) {
+                newEventsCount++;
+                const el = document.createElement('div');
+                
+                let iconText = 'HAZ';
+                if (evt.type === 'accident') iconText = 'MVA';
+                if (evt.type === 'closure') iconText = 'RD';
+
+                el.className = `app6-marker app6-hazard`;
+                el.innerHTML = `
+                    <div class="app6-symbol">
+                        <div class="app6-frame app6-hazard-frame">
+                            <div class="app6-asset-icon">${iconText}</div>
+                        </div>
+                    </div>
+                    <div class="app6-data-block hazard-data-block">
+                        <div>${evt.description}</div>
+                    </div>
+                `;
+                
+                const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+                    .setLngLat([evt.lng, evt.lat])
+                    .addTo(map);
+                
+                eventMarkers[evt.id] = { marker, el };
+            }
+        });
+        
+        if (newEventsCount > 0) {
+            sysLog(`INTEL: Načteny nové hrozby (${newEventsCount}).`);
+        }
+    } catch (err) {
+        sysLog(`ERR: Stažení událostí selhalo.`);
+    }
+}
+
+// Stáhnout události chvíli po startu
+setTimeout(fetchAndRenderEvents, 2000);
+setInterval(fetchAndRenderEvents, 60000); // Aktualizace každou minutu
 
 // --- UI Toggles ---
 

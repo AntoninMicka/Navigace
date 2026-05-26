@@ -27,9 +27,9 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 ## 3. Zdroje Dat a Agregace
 ### Oficiální API (Government/Global)
 - [ ] DATEX II integrace
-- [ ] NDIC / Dopravniinfo.cz / Městská open data
-- [ ] Vyřešit CORS pro volání API z prohlížeče (případně použít free CORS proxy pro MVP)
-- [ ] Parser + polling + lokální cache
+- [x] NDIC / Dopravniinfo.cz / Městská open data
+- [x] Vyřešit CORS pro volání API z prohlížeče (vyřešeno vlastním Node.js proxy serverem)
+- [x] Parser + polling + lokální cache
 
 ### Databáze radarů
 - [ ] SCDB / OSM speed cameras
@@ -171,7 +171,7 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 
 ### Fáze 2 (Data a UI)
 - [ ] Zobrazení MapLibre GL JS mapy s dark/tactical stylem
-- [ ] Načítání veřejných API (doprava/nehody)
+- [x] Načítání veřejných API (doprava/nehody) - funkční mock proxy
 - [ ] Implementace MILSTD ikon jako mapových markerů
 
 ### Fáze 3 (Taktický feeling)
