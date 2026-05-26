@@ -835,9 +835,54 @@ async function fetchAndRenderEvents() {
     }
 }
 
+// --- Radary (Nepřátelské senzory z OSM) ---
+async function fetchAndRenderRadars() {
+    try {
+        const queryParams = (currentLng !== null && currentLat !== null) ? `?lng=${currentLng}&lat=${currentLat}` : '';
+        const response = await fetch(`/api/radars${queryParams}`);
+        const radars = await response.json();
+        let newCount = 0;
+
+        radars.forEach(rad => {
+            if (!eventMarkers[rad.id]) {
+                newCount++;
+                const el = document.createElement('div');
+                
+                // Využijeme existující CSS třídu app6-hazard (červený kosočtverec)
+                el.className = `app6-marker app6-hazard`;
+                el.innerHTML = `
+                    <div class="app6-symbol">
+                        <div class="app6-frame app6-hazard-frame">
+                            <div class="app6-asset-icon">RAD</div>
+                        </div>
+                    </div>
+                    <div class="app6-data-block hazard-data-block">
+                        <div>${rad.description}</div>
+                    </div>
+                `;
+                
+                const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+                    .setLngLat([rad.lng, rad.lat])
+                    .addTo(map);
+                
+                eventMarkers[rad.id] = { marker, el };
+            }
+        });
+        
+        if (newCount > 0) {
+            sysLog(`INTEL: Zaměřeny nepřátelské senzory (${newCount}).`);
+        }
+    } catch (err) {
+        sysLog(`ERR: Stažení radarů selhalo.`);
+    }
+}
+
 // Stáhnout události chvíli po startu
 setTimeout(fetchAndRenderEvents, 2000);
 setInterval(fetchAndRenderEvents, 60000); // Aktualizace každou minutu
+
+setTimeout(fetchAndRenderRadars, 3000);
+setInterval(fetchAndRenderRadars, 60000 * 5); // Radary stačí aktualizovat jen občas (5 minut)
 
 // --- UI Toggles ---
 

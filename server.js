@@ -82,24 +82,26 @@ app.get('/api/events', async (req, res) => {
     // Pokud je cache prázdná nebo starší než 5 minut, stáhneme čerstvá data z ŘSD
     if (now - lastEventsFetch > EVENTS_CACHE_TTL) {
         try {
-            // Geoportál ŘSD nabízí ArcGIS REST API, které umí vracet rovnou GeoJSON (f=geojson).
-            // Použijeme query `where=1=1` pro získání všech aktuálních záznamů.
-            const rsdAccidentsUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Nehody/MapServer/0/query?where=1%3D1&outFields=*&f=geojson';
-            const rsdClosuresUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Uzavirky_a_omezeni/MapServer/0/query?where=1%3D1&outFields=*&f=geojson';
+            // ArcGIS REST API vrací nejspolehlivěji data ve formátu nativním Esri JSON (f=json). 
+            // WAF Geoportálu může blokovat where=1=1 (bere to jako útok), takže použijeme where=OBJECTID>0
+            const rsdAccidentsUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Nehody/MapServer/0/query?where=OBJECTID>0&outFields=OBJECTID,POPIS&outSR=4326&f=json';
+            const rsdClosuresUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Uzavirky_a_omezeni/MapServer/0/query?where=OBJECTID>0&outFields=OBJECTID,POPIS&outSR=4326&f=json';
 
             // Pomocná funkce pro bezpečné stažení a parsování
             const fetchSafeJson = async (url) => {
                 const response = await fetch(url, {
                     headers: { 
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept': 'application/geo+json, application/json, text/plain, */*'
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'application/json'
                     }
                 });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const text = await response.text();
                 if (!text || !text.trim()) throw new Error('Prázdná odpověď');
                 try {
-                    return JSON.parse(text);
+                    const parsed = JSON.parse(text);
+                    if (parsed.error) throw new Error(`ArcGIS API Error: ${parsed.error.message}`);
+                    return parsed;
                 } catch (e) {
                     throw new Error(`Neplatný JSON. Začátek: ${text.substring(0, 100).replace(/\n/g, '')}`);
                 }
@@ -114,25 +116,29 @@ app.get('/api/events', async (req, res) => {
             let newEvents = [];
 
             if (accidentsRes.status === 'fulfilled' && accidentsRes.value.features) {
-                newEvents = newEvents.concat(accidentsRes.value.features.map(f => ({
-                    id: f.properties?.OBJECTID || Math.random().toString(36).substring(2),
-                    type: 'accident',
-                    lng: f.geometry?.coordinates?.[0] || 0,
-                    lat: f.geometry?.coordinates?.[1] || 0,
-                    description: f.properties?.POPIS || 'Dopravní nehoda (ŘSD)'
-                })));
+                newEvents = newEvents.concat(accidentsRes.value.features.map(f => {
+                    return {
+                        id: f.attributes?.OBJECTID || Math.random().toString(36).substring(2),
+                        type: 'accident',
+                        lng: f.geometry?.x || 0,
+                        lat: f.geometry?.y || 0,
+                        description: f.attributes?.POPIS || 'Dopravní nehoda (ŘSD)'
+                    };
+                }));
             } else if (accidentsRes.status === 'rejected') {
                 console.log(`[WARN] Stažení nehod z ŘSD selhalo: ${accidentsRes.reason.message}`);
             }
 
             if (closuresRes.status === 'fulfilled' && closuresRes.value.features) {
-                newEvents = newEvents.concat(closuresRes.value.features.map(f => ({
-                    id: f.properties?.OBJECTID || Math.random().toString(36).substring(2),
-                    type: 'closure',
-                    lng: f.geometry?.coordinates?.[0] || 0,
-                    lat: f.geometry?.coordinates?.[1] || 0,
-                    description: f.properties?.POPIS || 'Uzavírka / Omezení (ŘSD)'
-                })));
+                newEvents = newEvents.concat(closuresRes.value.features.map(f => {
+                    return {
+                        id: f.attributes?.OBJECTID || Math.random().toString(36).substring(2),
+                        type: 'closure',
+                        lng: f.geometry?.x || 0,
+                        lat: f.geometry?.y || 0,
+                        description: f.attributes?.POPIS || 'Uzavírka / Omezení (ŘSD)'
+                    };
+                }));
             } else if (closuresRes.status === 'rejected') {
                 console.log(`[WARN] Stažení uzavírek z ŘSD selhalo: ${closuresRes.reason.message}`);
             }
@@ -165,6 +171,51 @@ app.get('/api/events', async (req, res) => {
         { id: 'evt-mock-1', type: 'accident', lat: centerLat + 0.005, lng: centerLng + 0.005, description: 'Nehoda (2 vozidla) [MOCK]' },
         { id: 'evt-mock-2', type: 'closure', lat: centerLat - 0.005, lng: centerLng - 0.005, description: 'Uzavírka (Práce na silnici) [MOCK]' }
     ]);
+});
+
+// --- Cache pro Radary (OpenStreetMap Overpass API) ---
+let radarsCache = [];
+let lastRadarsFetch = 0;
+const RADARS_CACHE_TTL = 24 * 60 * 60 * 1000; // Platnost cache: 24 hodin
+
+app.get('/api/radars', async (req, res) => {
+    const centerLat = Number(req.query.lat) || 49.817;
+    const centerLng = Number(req.query.lng) || 15.473;
+    const now = Date.now();
+
+    if (now - lastRadarsFetch > RADARS_CACHE_TTL || radarsCache.length === 0) {
+        try {
+            // Bounding box pro ČR: jih, západ, sever, východ
+            const overpassQuery = `[out:json][timeout:25];node"highway"="speed_camera";out;`;
+            const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
+            
+            const response = await fetch(overpassUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const data = await response.json();
+            if (data && data.elements) {
+                radarsCache = data.elements.map(node => ({
+                    id: `osm-rad-${node.id}`,
+                    type: 'radar',
+                    lat: node.lat,
+                    lng: node.lon,
+                    description: 'Nepřátelský senzor (Radar)'
+                }));
+                lastRadarsFetch = now;
+                console.log(`[SYS] Stáhnuto ${radarsCache.length} radarů z OSM.`);
+            }
+        } catch (err) {
+            console.log(`[WARN] Chyba při stahování z OSM Overpass: ${err.message}`);
+        }
+    }
+
+    // Odeslat radary v okruhu zhruba 50 km od uživatele
+    const localRadars = radarsCache.filter(rad => {
+        return Math.abs(rad.lat - centerLat) < 0.5 && Math.abs(rad.lng - centerLng) < 0.5;
+    });
+    res.json(localRadars);
 });
 
 // Fallback pro SPA / PWA - všechny neznámé routy pošlou index.html
