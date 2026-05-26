@@ -63,12 +63,14 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 
 ## 5. Navigační a Event Engine
 ### Taktická Navigace
-- [ ] Výpočet trasy (routing API), ETA, navigace po trase a dynamický přepočet při sjetí
+- [x] Výpočet trasy (routing API), ETA, navigace po trase a dynamický přepočet při sjetí
+- [x] Geocoding (vyhledávání adres) a preview mód
+- [x] Lokální ukládání bodů zájmu (POI)
 - [ ] Dynamické přesměrování (hlášení: *"Primary route compromised"*)
 - [ ] Podpora offline mapových podkladů (cachování vektorových dlaždic přes Service Worker)
 
 ### Lokalizace a Filtrování Eventů
-- [ ] GPS tracking & detekce směru (zlepšení přesnosti pomocí magnetometru/kompasu)
+- [x] GPS tracking & detekce směru (zlepšení přesnosti pomocí magnetometru/kompasu)
 - [ ] Filtrování dle vzdálenosti a rychlosti
 - [ ] Ignorování protisměru a relevance podle silnice
 - [ ] Mergování podobných incidentů v blízkosti

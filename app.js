@@ -25,6 +25,12 @@ let currentLng = null;
 let currentLat = null;
 let hasLocation = false;
 
+// Navigační stavové proměnné
+let isTracking = true; // Sledování aktivní / Preview mod
+let currentDestLng = null;
+let currentDestLat = null;
+let currentRouteCoords = []; // Souřadnice trasy pro výpočet odchylky
+
 // Overview mapa pro velký displej
 let overviewMap = null;
 let overviewUserMarker = null;
@@ -90,6 +96,21 @@ window.addEventListener('deviceorientation', (event) => {
     }
 }, true);
 
+// Pomocné matematické funkce pro výpočet vzdálenosti bodu od úsečky (pro detekci sjetí z trasy)
+function sqr(x) { return x * x; }
+function dist2(v, w) { return sqr(v[0] - w[0]) + sqr(v[1] - w[1]); }
+function distToSegmentSquared(p, v, w) {
+    var l2 = dist2(v, w);
+    if (l2 === 0) return dist2(p, v);
+    var t = ((p[0] - v[0]) * (w[0] - v[0]) + (p[1] - v[1]) * (w[1] - v[1])) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return dist2(p, [v[0] + t * (w[0] - v[0]), v[1] + t * (w[1] - v[1])]);
+}
+function distToSegmentInMeters(p, v, w) {
+    // Převedení z hrubých stupňů na metry (1 stupeň je zhruba 111.32 km)
+    return Math.sqrt(distToSegmentSquared(p, v, w)) * 111320;
+}
+
 // --- Výpočet trasy (Routing API - OSRM) ---
 async function calculateRoute(destLng, destLat) {
     if (!currentLng || !currentLat) {
@@ -104,6 +125,11 @@ async function calculateRoute(destLng, destLat) {
         
         if (data.routes && data.routes.length > 0) {
             const route = data.routes[0];
+            
+            currentDestLng = destLng;
+            currentDestLat = destLat;
+            currentRouteCoords = route.geometry.coordinates; // Záchyt souřadnic trasy
+            
             const geojson = { type: 'Feature', properties: {}, geometry: route.geometry };
             
             if (map.getSource('route')) {
@@ -170,13 +196,29 @@ function handlePositionSuccess(position) {
         map.jumpTo({ center: [lng, lat], zoom: 16 });
         isFirstLocation = false;
         sysLog('Poloha zaměřena.');
-    } else {
+    } else if (isTracking) {
         map.panTo([lng, lat], { duration: 1000 });
     }
 
-    // Taktické natočení mapy podle směru jízdy / kompasu (jen pokud není uživatel v overview režimu)
-    if (heading !== null && map.getPitch() > 0) {
+    // Taktické natočení mapy jen pokud uživatel mapu zrovna ručně neprohlíží
+    if (heading !== null && map.getPitch() > 0 && isTracking) {
         map.easeTo({ bearing: heading, duration: 1000 });
+    }
+    
+    // --- Kontrola sjetí z trasy (Off-route detection) ---
+    if (currentRouteCoords.length > 0) {
+        let minMeters = Infinity;
+        // Najdeme nejbližší segment trasy
+        for (let i = 0; i < currentRouteCoords.length - 1; i++) {
+            let d = distToSegmentInMeters([lng, lat], currentRouteCoords[i], currentRouteCoords[i+1]);
+            if (d < minMeters) minMeters = d;
+        }
+        
+        if (minMeters > 50) { // Tolerance 50 metrů
+            sysLog(`WARN: Mimo trasu (${Math.round(minMeters)}m). Přepočítávám...`);
+            currentRouteCoords = []; // Vymazat, aby se nepřepočítávalo v nekonečné smyčce
+            calculateRoute(currentDestLng, currentDestLat);
+        }
     }
 }
 
@@ -250,9 +292,10 @@ function createBftMarker(u) {
 
 // Centrování mapy (Tlačítko CENTER)
 document.getElementById('btn-locate').addEventListener('click', () => {
+    isTracking = true; // Obnovit automatické sledování
     if (hasLocation) {
         map.flyTo({ center: [currentLng, currentLat], zoom: 16, pitch: 45, duration: 1500 });
-        sysLog('Mapa centrována na vlastní polohu.');
+        sysLog('Sledování obnoveno.');
     } else {
         sysLog('WARN: Pozice zatím není známa.');
     }
@@ -262,8 +305,12 @@ document.getElementById('btn-locate').addEventListener('click', () => {
     }
 });
 
-// Přepnutí do overview režimu při manuálním pohybu mapou
+// Zastavení sledování při manuálním pohybu mapou (Preview mód)
 map.on('dragstart', () => {
+    if (isTracking) {
+        isTracking = false;
+        sysLog('Preview mód (sledování pozastaveno).');
+    }
     map.easeTo({ pitch: 0, duration: 500 });
 });
 
@@ -271,6 +318,56 @@ map.on('dragstart', () => {
 map.on('click', (e) => {
     calculateRoute(e.lngLat.lng, e.lngLat.lat);
 });
+
+// --- Vyhledávání adres (Nominatim Geocoding) ---
+document.getElementById('btn-search').addEventListener('click', async () => {
+    const query = document.getElementById('search-input').value;
+    if (!query) return;
+    sysLog(`Hledám: ${query}`);
+    try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        if (data && data.length > 0) {
+            const lon = parseFloat(data[0].lon);
+            const lat = parseFloat(data[0].lat);
+            sysLog(`Nalezeno: ${data[0].display_name.split(',')[0]}`);
+            isTracking = false; // Přepnout do preview modu
+            map.flyTo({ center: [lon, lat], zoom: 15, pitch: 0 });
+            calculateRoute(lon, lat);
+        } else {
+            sysLog('Adresa nenalezena.');
+        }
+    } catch (err) {
+        sysLog('ERR: Vyhledávání selhalo.');
+    }
+});
+
+// --- Lokální ukládání bodů zájmu (POI) ---
+map.on('contextmenu', (e) => {
+    const name = prompt("Zadejte taktické označení cíle (POI):", "Cíl");
+    if (name) {
+        const pois = JSON.parse(localStorage.getItem('tacnav_pois') || '[]');
+        pois.push({ name, lng: e.lngLat.lng, lat: e.lngLat.lat });
+        localStorage.setItem('tacnav_pois', JSON.stringify(pois));
+        sysLog(`POI uloženo: ${name}`);
+        renderPOIs();
+    }
+});
+
+function renderPOIs() {
+    const pois = JSON.parse(localStorage.getItem('tacnav_pois') || '[]');
+    pois.forEach(poi => {
+        const el = document.createElement('div');
+        el.style.width = '12px'; el.style.height = '12px';
+        el.style.backgroundColor = '#ffcc00'; el.style.borderRadius = '50%';
+        el.style.border = '1px solid #000'; el.title = poi.name;
+        
+        el.addEventListener('click', (e) => { e.stopPropagation(); calculateRoute(poi.lng, poi.lat); });
+        new maplibregl.Marker({ element: el }).setLngLat([poi.lng, poi.lat]).addTo(map);
+    });
+}
+
+renderPOIs(); // Vykreslit POI při startu aplikace
 
 // --- UI Toggles ---
 
