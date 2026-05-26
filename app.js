@@ -73,17 +73,77 @@ if (socket) {
     });
 }
 
+// --- Kompas / Magnetometr pro lepší přesnost směru ---
+let compassHeading = null;
+
+// Pro Android/moderní prohlížeče
+window.addEventListener('deviceorientationabsolute', (event) => {
+    if (event.alpha !== null) {
+        compassHeading = 360 - event.alpha; // Převedení na standardní azimut
+    }
+}, true);
+
+// Fallback pro iOS
+window.addEventListener('deviceorientation', (event) => {
+    if (event.webkitCompassHeading) {
+        compassHeading = event.webkitCompassHeading;
+    }
+}, true);
+
+// --- Výpočet trasy (Routing API - OSRM) ---
+async function calculateRoute(destLng, destLat) {
+    if (!currentLng || !currentLat) {
+        sysLog('WARN: Nelze vypočítat trasu, chybí vlastní poloha.');
+        return;
+    }
+    try {
+        sysLog('Vyžaduji taktickou trasu...');
+        // Dotaz na veřejný OSRM server pro navigaci aut
+        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${currentLng},${currentLat};${destLng},${destLat}?overview=full&geometries=geojson`);
+        const data = await response.json();
+        
+        if (data.routes && data.routes.length > 0) {
+            const route = data.routes[0];
+            const geojson = { type: 'Feature', properties: {}, geometry: route.geometry };
+            
+            if (map.getSource('route')) {
+                map.getSource('route').setData(geojson);
+            } else {
+                map.addSource('route', { type: 'geojson', data: geojson });
+                map.addLayer({
+                    id: 'route',
+                    type: 'line',
+                    source: 'route',
+                    layout: { 'line-join': 'round', 'line-cap': 'round' },
+                    paint: { 'line-color': '#00ff00', 'line-width': 5, 'line-opacity': 0.7 }
+                }, 'waterway-name'); // Vykreslit pod texty
+            }
+            
+            sysLog(`Trasa nalezena: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min.`);
+        }
+    } catch (err) {
+        sysLog(`ERR: Výpočet trasy selhal (${err.message})`);
+    }
+}
+
 // Funkce pro zpracování úspěšného získání polohy
 function handlePositionSuccess(position) {
     const coords = position.coords;
     const lng = coords.longitude;
     const lat = coords.latitude;
     const speed = (coords.speed * 3.6).toFixed(1) || 0; // m/s na km/h
-    const heading = coords.heading ? coords.heading.toFixed(0) : '--';
+    let heading = coords.heading ? coords.heading : null;
+    
+    // Fúze senzorů: Pokud jedeme pomalu (< 5 km/h) nebo GPS ztratí směr, použijeme kompas
+    if ((speed < 5 || heading === null) && compassHeading !== null) {
+        heading = compassHeading;
+    }
+    
+    const displayHeading = heading !== null ? heading.toFixed(0) : '--';
 
     // Odeslání polohy na BFT server
     if (socket) {
-        socket.emit('position_update', { lat, lng, speed, heading });
+        socket.emit('position_update', { lat, lng, speed, heading: displayHeading });
     }
 
     // Uložení aktuální polohy pro centrování
@@ -95,7 +155,7 @@ function handlePositionSuccess(position) {
     document.getElementById('pos-lat').innerText = lat.toFixed(5);
     document.getElementById('pos-lon').innerText = lng.toFixed(5);
     document.getElementById('pos-speed').innerText = speed > 0 ? speed : '0';
-    document.getElementById('pos-heading').innerText = heading;
+    document.getElementById('pos-heading').innerText = displayHeading;
 
     // Update Map
     userMarker.setLngLat([lng, lat]);
@@ -114,9 +174,9 @@ function handlePositionSuccess(position) {
         map.panTo([lng, lat], { duration: 1000 });
     }
 
-    // Taktické natočení mapy podle směru jízdy
-    if (coords.heading && coords.speed > 1) {
-        map.easeTo({ bearing: coords.heading, duration: 1000 });
+    // Taktické natočení mapy podle směru jízdy / kompasu (jen pokud není uživatel v overview režimu)
+    if (heading !== null && map.getPitch() > 0) {
+        map.easeTo({ bearing: heading, duration: 1000 });
     }
 }
 
@@ -205,6 +265,11 @@ document.getElementById('btn-locate').addEventListener('click', () => {
 // Přepnutí do overview režimu při manuálním pohybu mapou
 map.on('dragstart', () => {
     map.easeTo({ pitch: 0, duration: 500 });
+});
+
+// Zachycení kliknutí na mapu pro navigaci
+map.on('click', (e) => {
+    calculateRoute(e.lngLat.lng, e.lngLat.lat);
 });
 
 // --- UI Toggles ---

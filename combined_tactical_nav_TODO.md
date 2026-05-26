@@ -63,12 +63,12 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 
 ## 5. Navigační a Event Engine
 ### Taktická Navigace
-- [ ] Výpočet trasy, ETA, alternativní trasy
+- [ ] Výpočet trasy (routing API), ETA, navigace po trase a dynamický přepočet při sjetí
 - [ ] Dynamické přesměrování (hlášení: *"Primary route compromised"*)
 - [ ] Podpora offline mapových podkladů (cachování vektorových dlaždic přes Service Worker)
 
 ### Lokalizace a Filtrování Eventů
-- [ ] GPS tracking & detekce směru (heading detection)
+- [ ] GPS tracking & detekce směru (zlepšení přesnosti pomocí magnetometru/kompasu)
 - [ ] Filtrování dle vzdálenosti a rychlosti
 - [ ] Ignorování protisměru a relevance podle silnice
 - [ ] Mergování podobných incidentů v blízkosti
@@ -135,7 +135,8 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 - [ ] Vtipy o dronovém průzkumu (Drone reconnaissance jokes)
 - [ ] "GPS degraded" mód (simulace výpadků/rušení)
 - [ ] Taktický hudební podkres (Tactical soundtrack mode)
-- [ ] BFT (Blue Force Tracking) / "Convoy mode" pro bezpečné cestování a vizualizaci pozic ve skupině přátel
+- [ ] BFT (Blue Force Tracking) / "Convoy mode" pro bezpečné cestování a vizualizaci pozic ve skupině přátel (místnosti chráněné heslem)
+- [ ] Skupinový taktický textový chat v rámci BFT
 
 ---
 
@@ -178,5 +179,6 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 
 ### Fáze 4 (Komunita)
 - [ ] Komunitní backend pro real-time sdílení
-- [ ] BFT (Blue Force Tracking) – systém skupin pro živé sdílení polohy s přáteli
+- [ ] BFT (Blue Force Tracking) – systém skupin (místností) chráněných heslem pro živé sdílení polohy
+- [ ] Skupinový chat
 - [ ] Gamifikace (Achievementy, Reputation)
