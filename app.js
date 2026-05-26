@@ -21,6 +21,9 @@ const userMarker = new maplibregl.Marker({ element: userEl })
     .addTo(map);
 
 let isFirstLocation = true;
+let currentLng = null;
+let currentLat = null;
+let hasLocation = false;
 
 // Logovací funkce do panelu
 function sysLog(msg) {
@@ -38,6 +41,11 @@ if ('geolocation' in navigator) {
             const lat = coords.latitude;
             const speed = (coords.speed * 3.6).toFixed(1) || 0; // m/s na km/h
             const heading = coords.heading ? coords.heading.toFixed(0) : '--';
+
+            // Uložení aktuální polohy pro centrování
+            currentLng = lng;
+            currentLat = lat;
+            hasLocation = true;
 
             // Update UI
             document.getElementById('pos-lat').innerText = lat.toFixed(5);
@@ -75,6 +83,16 @@ if ('geolocation' in navigator) {
 } else {
     sysLog('ERR: Zařízení nemá GPS.');
 }
+
+// Centrování mapy (Tlačítko CENTER)
+document.getElementById('btn-locate').addEventListener('click', () => {
+    if (hasLocation) {
+        map.flyTo({ center: [currentLng, currentLat], zoom: 16, duration: 1500 });
+        sysLog('Mapa centrována na vlastní polohu.');
+    } else {
+        sysLog('WARN: Pozice zatím není známa.');
+    }
+});
 
 // HUD Modulace
 const hudBtn = document.getElementById('btn-hud');

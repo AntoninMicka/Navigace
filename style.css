@@ -60,6 +60,11 @@ h2 {
     align-items: center;
 }
 
+.header-buttons {
+    display: flex;
+    gap: 8px;
+}
+
 button {
     background: transparent;
     color: #00ff00;

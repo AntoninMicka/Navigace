@@ -1,0 +1,14 @@
+{
+  "name": "tacnav-backend",
+  "version": "1.0.0",
+  "description": "Taktická Navigace - Web Server a do budoucna BFT backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "Antonin",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
