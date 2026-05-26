@@ -83,21 +83,22 @@ app.get('/api/events', async (req, res) => {
     if (now - lastEventsFetch > EVENTS_CACHE_TTL) {
         try {
             // ArcGIS REST API vrací nejspolehlivěji data ve formátu nativním Esri JSON (f=json). 
-            // WAF Geoportálu může blokovat where=1=1 (bere to jako útok), takže použijeme where=OBJECTID>0
-            const rsdAccidentsUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Nehody/MapServer/0/query?where=OBJECTID>0&outFields=OBJECTID,POPIS&outSR=4326&f=json';
-            const rsdClosuresUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Uzavirky_a_omezeni/MapServer/0/query?where=OBJECTID>0&outFields=OBJECTID,POPIS&outSR=4326&f=json';
+            // WAF Geoportálu ŘSD je citlivý na speciální znaky, použijeme bezpečně kódované where=1%3D1
+            const rsdAccidentsUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Nehody/MapServer/0/query?where=1%3D1&outFields=OBJECTID,POPIS&outSR=4326&f=json';
+            const rsdClosuresUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Uzavirky_a_omezeni/MapServer/0/query?where=1%3D1&outFields=OBJECTID,POPIS&outSR=4326&f=json';
 
             // Pomocná funkce pro bezpečné stažení a parsování
             const fetchSafeJson = async (url) => {
                 const response = await fetch(url, {
                     headers: { 
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                        'Accept': 'application/json'
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'application/json, text/plain, */*',
+                        'Referer': 'https://dopravniinfo.cz/'
                     }
                 });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const text = await response.text();
-                if (!text || !text.trim()) throw new Error('Prázdná odpověď');
+                if (!text || !text.trim()) throw new Error(`Prázdná odpověď (HTTP ${response.status})`);
                 try {
                     const parsed = JSON.parse(text);
                     if (parsed.error) throw new Error(`ArcGIS API Error: ${parsed.error.message}`);
