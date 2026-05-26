@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
+const { Server } = require('socket.io');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -32,8 +33,31 @@ try {
     console.log(`=========================================`);
 }
 
+// Inicializace Socket.io
+const io = new Server();
+const bftUsers = {}; // Paměť pro pozice uživatelů
+
+io.on('connection', (socket) => {
+    console.log(`[BFT] Uživatel připojen: ${socket.id}`);
+    
+    socket.on('position_update', (data) => {
+        // Uložení/aktualizace pozice uživatele
+        bftUsers[socket.id] = { id: socket.id, ...data };
+        // Rozeslání všem připojeným klientům
+        io.emit('bft_update', Object.values(bftUsers));
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`[BFT] Uživatel odpojen: ${socket.id}`);
+        delete bftUsers[socket.id];
+        io.emit('bft_update', Object.values(bftUsers)); // Aktualizace mapy po odpojení
+    });
+});
+
 // Spuštění HTTP serveru
-http.createServer(app).listen(PORT, '0.0.0.0', () => {
+const httpServer = http.createServer(app);
+io.attach(httpServer);
+httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`=========================================`);
     console.log(`[SYS] HTTP Server běží na portu ${PORT}`);
     console.log(`[SYS] Lokální přístup: http://localhost:${PORT}`);
@@ -43,6 +67,7 @@ http.createServer(app).listen(PORT, '0.0.0.0', () => {
 
 // Spuštění HTTPS serveru (pokud byly načteny certifikáty)
 if (httpsServer) {
+    io.attach(httpsServer);
     httpsServer.listen(HTTPS_PORT, '0.0.0.0', () => {
         console.log(`[SYS] HTTPS Server běží na portu ${HTTPS_PORT}`);
         console.log(`[SYS] Lokální přístup: https://localhost:${HTTPS_PORT}`);

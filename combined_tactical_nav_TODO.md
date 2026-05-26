@@ -86,7 +86,7 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 ### UI Komponenty a HUD
 - [ ] App shell struktura pro PWA (Fullscreen zážitek)
 - [ ] Tlačítko pro HUD mód (CSS `transform: scaleY(-1);` pro odraz na čelní sklo)
-- [ ] Wake Lock API implementace (`navigator.wakeLock`) aby displej nezhasínal během jízdy
+- [x] Wake Lock API implementace (`navigator.wakeLock`) aby displej nezhasínal během jízdy a ošetření probuzení (Visibility API)
 - [ ] Plně responzivní layout (CSS Grid / Flexbox, Mobile-first)
 - [ ] Adaptivní informační panely (na malém displeji dynamicky vyjíždějící/skryté, na velkém trvalé zobrazení po stranách)
 
