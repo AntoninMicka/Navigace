@@ -143,11 +143,9 @@ app.get('/api/events', async (req, res) => {
         return;
     }
 
-    // --- Fallback na testovací Mock data (pokud není API klíč nastaven) ---
-    res.json([
-        { id: 'evt-mock-1', type: 'accident', lat: centerLat + 0.005, lng: centerLng + 0.005, description: 'Nehoda (2 vozidla) [MOCK]' },
-        { id: 'evt-mock-2', type: 'closure', lat: centerLat - 0.005, lng: centerLng - 0.005, description: 'Uzavírka (Práce na silnici) [MOCK]' }
-    ]);
+    // --- Fallback (pokud není API klíč nastaven nebo nejsou data) ---
+    // Vracíme prázdné pole, abychom se zbavili testovacích značek.
+    res.json([]);
 });
 
 // --- Cache pro Radary (OpenStreetMap Overpass API) ---
@@ -181,7 +179,7 @@ app.get('/api/radars', async (req, res) => {
                     type: 'radar',
                     lat: node.lat,
                     lng: node.lon,
-                    description: 'Nepřátelský senzor (Radar)'
+                    description: 'Senzor (Radar)'
                 }));
                 lastRadarsFetch = now;
                 console.log(`[SYS] Stáhnuto ${radarsCache.length} radarů z OSM.`);

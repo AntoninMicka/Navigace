@@ -31,7 +31,6 @@ body, html {
     width: 0;
     height: 0;
     position: relative;
-    z-index: 1000;
     pointer-events: none;
     filter: drop-shadow(0 0 4px rgba(0, 0, 0, 1)) drop-shadow(0 0 12px rgba(0, 166, 255, 0.95));
 }
@@ -66,20 +65,6 @@ body, html {
     transform: translateX(-50%);
 }
 
-.app6-identity {
-    position: absolute;
-    top: 24px;
-    left: 0;
-    color: #ffffff;
-    background: rgba(0, 0, 0, 0.8);
-    border: 1px solid rgba(0, 166, 255, 0.8);
-    padding: 1px 4px;
-    font-size: 0.62rem;
-    line-height: 1;
-    transform: translateX(-50%);
-    white-space: nowrap;
-}
-
 .app6-asset-icon {
     position: absolute;
     left: 50%;
@@ -90,6 +75,46 @@ body, html {
     line-height: 1;
     text-shadow: 0 0 5px #000, 0 0 8px #00a6ff;
     transform: translate(-50%, -50%);
+}
+
+.app6-amplifiers {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 1px;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    color: #b8ecff;
+    text-shadow: 1px 1px 2px #000;
+    pointer-events: auto; /* To allow text selection if needed */
+}
+
+.app6-amp-t { /* Unique Designation (Right) */
+    position: absolute;
+    left: 28px;
+    top: -8px;
+    transform: translateY(-50%);
+}
+
+.app6-amp-z { /* Speed (Left) */
+    position: absolute;
+    right: 28px; /* left of symbol */
+    top: 0;
+    transform: translateY(-50%);
+    text-align: right;
+}
+
+.app6-amp-h { /* Additional Info (Right, below T) */
+    position: absolute;
+    left: 28px;
+    top: 8px;
+    transform: translateY(-50%);
+    color: #ffcc00; /* Different color for secondary info */
+    font-size: 0.65rem;
+    max-width: 150px;
+    white-space: normal;
+    line-height: 1.1;
 }
 
 .app6-marker-stale {
@@ -127,21 +152,6 @@ body, html {
     border-radius: 2px;
 }
 
-.app6-data-block {
-    position: absolute;
-    left: 26px;
-    top: 0;
-    color: #b8ecff;
-    background: rgba(0, 0, 0, 0.82);
-    border-left: 2px solid #00a6ff;
-    padding: 3px 5px;
-    font-size: 0.62rem;
-    line-height: 1.25;
-    white-space: nowrap;
-    text-shadow: 0 0 4px #000;
-    transform: translateY(-50%);
-}
-
 /* Hazard / Incident markers */
 .app6-hazard-frame {
     position: absolute;
@@ -167,10 +177,15 @@ body, html {
     font-size: 13px;
 }
 
-.hazard-data-block {
-    left: 28px;
-    border-left-color: #ff3333;
+.app6-hazard .app6-amplifiers {
     color: #ffcccc;
+}
+
+.app6-hazard .app6-amp-h {
+    color: #ffcc00;
+    left: 24px;
+    top: 0;
+    transform: translateY(-50%);
 }
 
 .destination-marker {

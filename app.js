@@ -15,12 +15,11 @@ userEl.innerHTML = `
         <div class="app6-frame app6-equipment-frame">
             <div class="app6-asset-icon"></div>
         </div>
-        <div class="app6-identity">SELF</div>
     </div>
-    <div class="app6-data-block">
-        <div id="self-pos-lat">LAT --</div>
-        <div id="self-pos-lon">LON --</div>
-        <div id="self-pos-hdg">HDG --</div>
+    <div class="app6-amplifiers">
+        <div class="app6-amp-t">SELF</div>
+        <div class="app6-amp-z" id="self-amp-z">-- km/h</div>
+        <div class="app6-amp-h" id="self-amp-h">HDG --</div>
     </div>
 `;
 
@@ -112,8 +111,8 @@ if (socket) {
                 createBftMarker(u);
             } else {
                 bftMarkers[u.id].marker.setLngLat([u.lng, u.lat]);
-                bftMarkers[u.id].el.querySelector('.bft-spd').innerText = `SPD ${u.speed || 0}`;
-                bftMarkers[u.id].el.querySelector('.bft-hdg').innerText = `HDG ${u.heading || '--'}`;
+                bftMarkers[u.id].el.querySelector('.app6-amp-z').innerText = `${u.speed || 0} km/h`;
+                bftMarkers[u.id].el.querySelector('.app6-amp-h').innerText = `HDG ${u.heading || '--'}`;
                 
                 const currentClass = Array.from(bftMarkers[u.id].el.classList).find(c => c.startsWith('app6-asset-'));
                 const newClass = `app6-asset-${u.assetType || 'car'}`;
@@ -530,9 +529,8 @@ function handlePositionSuccess(position) {
     document.getElementById('pos-lon').innerText = lng.toFixed(5);
     document.getElementById('pos-speed').innerText = speedKmh > 0 ? displaySpeed : '0';
     document.getElementById('pos-heading').innerText = displayHeading;
-    document.getElementById('self-pos-lat').innerText = `LAT ${lat.toFixed(5)}`;
-    document.getElementById('self-pos-lon').innerText = `LON ${lng.toFixed(5)}`;
-    document.getElementById('self-pos-hdg').innerText = `HDG ${displayHeading}`;
+    document.getElementById('self-amp-z').innerText = `${speedKmh.toFixed(0)} km/h`;
+    document.getElementById('self-amp-h').innerText = `HDG ${displayHeading}`;
 
     // Update Map
     userMarker.setLngLat([lng, lat]);
@@ -676,11 +674,11 @@ function createBftMarker(u) {
             <div class="app6-frame app6-equipment-frame">
                 <div class="app6-asset-icon"></div>
             </div>
-            <div class="app6-identity">${(u.id || 'BFT').substring(0, 4).toUpperCase()}</div>
         </div>
-        <div class="app6-data-block">
-            <div class="bft-spd">SPD ${u.speed || 0}</div>
-            <div class="bft-hdg">HDG ${u.heading || '--'}</div>
+        <div class="app6-amplifiers">
+            <div class="app6-amp-t">${(u.id || 'BFT').substring(0, 4).toUpperCase()}</div>
+            <div class="app6-amp-z">${u.speed || 0} km/h</div>
+            <div class="app6-amp-h">HDG ${u.heading || '--'}</div>
         </div>
     `;
     
@@ -803,9 +801,9 @@ async function fetchAndRenderEvents() {
                 newEventsCount++;
                 const el = document.createElement('div');
                 
-                let iconText = 'HAZ';
-                if (evt.type === 'accident') iconText = 'MVA';
-                if (evt.type === 'closure') iconText = 'RD';
+                let iconText = 'UNK'; // Unknown default
+                if (evt.type === 'accident') iconText = 'HAZ'; // Hazard
+                if (evt.type === 'closure') iconText = 'OBS'; // Obstruction
 
                 el.className = `app6-marker app6-hazard`;
                 el.innerHTML = `
@@ -814,8 +812,8 @@ async function fetchAndRenderEvents() {
                             <div class="app6-asset-icon">${iconText}</div>
                         </div>
                     </div>
-                    <div class="app6-data-block hazard-data-block">
-                        <div>${evt.description}</div>
+                    <div class="app6-amplifiers">
+                        <div class="app6-amp-h">${evt.description}</div>
                     </div>
                 `;
                 
@@ -853,11 +851,11 @@ async function fetchAndRenderRadars() {
                 el.innerHTML = `
                     <div class="app6-symbol">
                         <div class="app6-frame app6-hazard-frame">
-                            <div class="app6-asset-icon">RAD</div>
+                            <div class="app6-asset-icon">SNS</div>
                         </div>
                     </div>
-                    <div class="app6-data-block hazard-data-block">
-                        <div>${rad.description}</div>
+                    <div class="app6-amplifiers">
+                        <div class="app6-amp-h">${rad.description}</div>
                     </div>
                 `;
                 
