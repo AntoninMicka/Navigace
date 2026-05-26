@@ -31,9 +31,9 @@ body, html {
     width: 42px;
     height: 42px;
     position: relative;
-    z-index: 5;
+    z-index: 1000;
     pointer-events: none;
-    filter: drop-shadow(0 0 10px rgba(0, 0, 0, 1));
+    filter: drop-shadow(0 0 4px rgba(0, 0, 0, 1)) drop-shadow(0 0 12px rgba(0, 166, 255, 0.95));
 }
 
 .app6-symbol {
@@ -52,9 +52,20 @@ body, html {
     height: 42px;
     border: 3px solid #00a6ff;
     border-radius: 50%;
-    background: rgba(0, 166, 255, 0.22);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 0 12px rgba(0, 166, 255, 0.65);
+    background: rgba(0, 166, 255, 0.3);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9), 0 0 14px rgba(0, 166, 255, 0.85);
     position: relative;
+}
+
+.app6-frame::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: -9px;
+    border-right: 6px solid transparent;
+    border-bottom: 10px solid #00a6ff;
+    border-left: 6px solid transparent;
+    transform: translateX(-50%);
 }
 
 .app6-identity {
@@ -76,8 +87,20 @@ body, html {
     top: 50%;
     color: #ffffff;
     font-size: 18px;
+    font-weight: bold;
     line-height: 1;
+    text-shadow: 0 0 5px #000, 0 0 8px #00a6ff;
     transform: translate(-50%, -50%);
+}
+
+.app6-marker-stale {
+    opacity: 0.62;
+}
+
+.app6-marker-stale .app6-data-block::after {
+    content: "STALE";
+    display: block;
+    color: #ffcc00;
 }
 
 .app6-asset-person .app6-asset-icon::before {

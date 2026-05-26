@@ -36,6 +36,31 @@ let currentLat = null;
 let hasLocation = false;
 let watchId = null;
 
+function updateSelfMarker(lng, lat, heading = '--', isStale = false) {
+    if (!isValidLngLat(lng, lat)) return;
+
+    userEl.classList.toggle('app6-marker-stale', isStale);
+    userMarker.setLngLat([lng, lat]).addTo(map);
+    document.getElementById('self-pos-lat').innerText = `LAT ${lat.toFixed(5)}`;
+    document.getElementById('self-pos-lon').innerText = `LON ${lng.toFixed(5)}`;
+    document.getElementById('self-pos-hdg').innerText = `HDG ${heading}`;
+}
+
+function restoreLastSelfPosition() {
+    try {
+        const lastPosition = JSON.parse(localStorage.getItem('tacnav_last_self_position') || 'null');
+        if (!lastPosition || !isValidLngLat(lastPosition.lng, lastPosition.lat)) return;
+
+        currentLng = lastPosition.lng;
+        currentLat = lastPosition.lat;
+        hasLocation = true;
+        updateSelfMarker(currentLng, currentLat, lastPosition.heading || '--', true);
+        sysLog('Obnovena poslední známá poloha.');
+    } catch (err) {
+        localStorage.removeItem('tacnav_last_self_position');
+    }
+}
+
 // Navigační stavové proměnné
 let isTracking = false; // Sledování aktivní / Preview mod
 let isNavigating = false;
@@ -62,6 +87,8 @@ function sysLog(msg) {
         log.removeChild(log.lastChild);
     }
 }
+
+restoreLastSelfPosition();
 
 function setAssetType(type) {
     const safeType = APP6_ASSET_TYPES.includes(type) ? type : 'car';
@@ -530,12 +557,10 @@ function handlePositionSuccess(position) {
     document.getElementById('pos-lon').innerText = lng.toFixed(5);
     document.getElementById('pos-speed').innerText = speedKmh > 0 ? displaySpeed : '0';
     document.getElementById('pos-heading').innerText = displayHeading;
-    document.getElementById('self-pos-lat').innerText = `LAT ${lat.toFixed(5)}`;
-    document.getElementById('self-pos-lon').innerText = `LON ${lng.toFixed(5)}`;
-    document.getElementById('self-pos-hdg').innerText = `HDG ${displayHeading}`;
 
     // Update Map
-    userMarker.setLngLat([lng, lat]).addTo(map);
+    updateSelfMarker(lng, lat, displayHeading, false);
+    localStorage.setItem('tacnav_last_self_position', JSON.stringify({ lng, lat, heading: displayHeading }));
 
     // Update Overview Mapy (pokud existuje)
     if (overviewMap) {
