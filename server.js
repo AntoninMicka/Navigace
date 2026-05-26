@@ -4,9 +4,11 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const { Server } = require('socket.io');
+const { parseStringPromise } = require('xml2js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const NDIC_API_KEY = process.env.NDIC_API_KEY || null; // API klíč pro api.dopravniinfo.cz
 const HTTPS_PORT = process.env.HTTPS_PORT || 3443;
 
 // Statické servírování souborů ze složky, kde je spuštěn server
@@ -81,78 +83,52 @@ app.get('/api/events', async (req, res) => {
 
     // Pokud je cache prázdná nebo starší než 5 minut, stáhneme čerstvá data z ŘSD
     if (now - lastEventsFetch > EVENTS_CACHE_TTL) {
-        try {
-            // ArcGIS REST API vrací nejspolehlivěji data ve formátu nativním Esri JSON (f=json). 
-            // WAF Geoportálu ŘSD je citlivý na speciální znaky, použijeme bezpečně kódované where=1%3D1
-            const rsdAccidentsUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Nehody/MapServer/0/query?where=1%3D1&outFields=OBJECTID,POPIS&outSR=4326&f=json';
-            const rsdClosuresUrl = 'https://geoportal.rsd.cz/arcgis/rest/services/NDIC/Uzavirky_a_omezeni/MapServer/0/query?where=1%3D1&outFields=OBJECTID,POPIS&outSR=4326&f=json';
-
-            // Pomocná funkce pro bezpečné stažení a parsování
-            const fetchSafeJson = async (url) => {
-                const response = await fetch(url, {
-                    headers: { 
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept': 'application/json, text/plain, */*',
-                        'Referer': 'https://dopravniinfo.cz/'
+        if (NDIC_API_KEY) {
+            try {
+                const apiUrl = 'https://api.dopravniinfo.cz/v1/situations?area=all';
+                const response = await fetch(apiUrl, {
+                    headers: {
+                        'X-Api-Key': NDIC_API_KEY,
+                        'User-Agent': 'TacticalNav/1.0'
                     }
                 });
+
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const text = await response.text();
-                if (!text || !text.trim()) throw new Error(`Prázdná odpověď (HTTP ${response.status})`);
-                try {
-                    const parsed = JSON.parse(text);
-                    if (parsed.error) throw new Error(`ArcGIS API Error: ${parsed.error.message}`);
-                    return parsed;
-                } catch (e) {
-                    throw new Error(`Neplatný JSON. Začátek: ${text.substring(0, 100).replace(/\n/g, '')}`);
+                const data = await response.json();
+
+                const newEvents = data.map(evt => {
+                    // API vrací typy jako 'accident', 'roadworks', 'closure'
+                    // Pro naši aplikaci mapujeme 'roadworks' na 'closure'
+                    let eventType = evt.type === 'accident' ? 'accident' : 'closure';
+                    
+                    return {
+                        id: evt.id,
+                        type: eventType,
+                        lat: evt.location.latitude,
+                        lng: evt.location.longitude,
+                        description: evt.title
+                    };
+                }).filter(evt => hasValidLngLat(evt.lng, evt.lat));
+
+                if (newEvents.length > 0) {
+                    eventsCache = newEvents;
+                    lastEventsFetch = now;
+                    console.log(`[SYS] Stáhnuto ${eventsCache.length} událostí z api.dopravniinfo.cz.`);
+                } else {
+                    console.log('[WARN] Z api.dopravniinfo.cz se nepodařilo stáhnout žádná data. Zůstává předchozí stav.');
                 }
-            };
-
-            // Paralelní stahování obou feedů
-            const [accidentsRes, closuresRes] = await Promise.allSettled([
-                fetchSafeJson(rsdAccidentsUrl),
-                fetchSafeJson(rsdClosuresUrl)
-            ]);
-
-            let newEvents = [];
-
-            if (accidentsRes.status === 'fulfilled' && accidentsRes.value.features) {
-                newEvents = newEvents.concat(accidentsRes.value.features.map(f => {
-                    return {
-                        id: f.attributes?.OBJECTID || Math.random().toString(36).substring(2),
-                        type: 'accident',
-                        lng: f.geometry?.x || 0,
-                        lat: f.geometry?.y || 0,
-                        description: f.attributes?.POPIS || 'Dopravní nehoda (ŘSD)'
-                    };
-                }));
-            } else if (accidentsRes.status === 'rejected') {
-                console.log(`[WARN] Stažení nehod z ŘSD selhalo: ${accidentsRes.reason.message}`);
+            } catch (err) {
+                console.log(`[WARN] Chyba při stahování z api.dopravniinfo.cz: ${err.message}`);
             }
-
-            if (closuresRes.status === 'fulfilled' && closuresRes.value.features) {
-                newEvents = newEvents.concat(closuresRes.value.features.map(f => {
-                    return {
-                        id: f.attributes?.OBJECTID || Math.random().toString(36).substring(2),
-                        type: 'closure',
-                        lng: f.geometry?.x || 0,
-                        lat: f.geometry?.y || 0,
-                        description: f.attributes?.POPIS || 'Uzavírka / Omezení (ŘSD)'
-                    };
-                }));
-            } else if (closuresRes.status === 'rejected') {
-                console.log(`[WARN] Stažení uzavírek z ŘSD selhalo: ${closuresRes.reason.message}`);
+        } else {
+            // Pokud API klíč není nastaven, zalogujeme varování jen jednou za čas
+            if (now - lastEventsFetch > 60000) { // Každou minutu
+                 console.log(`=========================================`);
+                 console.log(`[WARN] Chybí API klíč pro dopravní informace (NDIC_API_KEY).`);
+                 console.log(`[INFO] Používají se pouze testovací (mock) data.`);
+                 console.log(`=========================================`);
+                 lastEventsFetch = now; // Resetovat časovač, aby se zpráva neopakovala pořád
             }
-
-            if (newEvents.length > 0) {
-                eventsCache = newEvents;
-                lastEventsFetch = now;
-                console.log(`[SYS] Stáhnuto ${eventsCache.length} událostí z Geoportálu ŘSD.`);
-            } else {
-                console.log('[WARN] Z ŘSD se nepodařilo stáhnout žádná data. Zůstává předchozí stav.');
-            }
-        } catch (err) {
-            console.log(`[WARN] Chyba při stahování z ŘSD: ${err.message}`);
         }
     }
 
