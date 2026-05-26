@@ -27,23 +27,105 @@ body, html {
     background-color: #111;
 }
 
-.user-marker {
-    width: 22px;
-    height: 22px;
-    border: 3px solid #ffffff;
-    border-radius: 50%;
-    background: #00ff00;
-    box-shadow: 0 0 0 5px rgba(0, 255, 0, 0.2), 0 0 18px rgba(0, 255, 0, 0.95);
+.app6-marker {
+    width: 48px;
+    height: 48px;
     position: relative;
     z-index: 5;
+    pointer-events: none;
+    filter: drop-shadow(0 0 10px rgba(0, 0, 0, 1));
 }
 
-.user-marker::after {
+.app6-symbol {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    transform: translate(-50%, -50%);
+}
+
+.app6-frame {
+    width: 42px;
+    height: 42px;
+    border: 3px solid #00a6ff;
+    border-radius: 50%;
+    background: rgba(0, 166, 255, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 0 12px rgba(0, 166, 255, 0.65);
+    position: relative;
+}
+
+.app6-frame::before {
     content: "";
     position: absolute;
-    inset: -11px;
-    border: 1px solid rgba(0, 255, 0, 0.65);
+    left: 50%;
+    top: 50%;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
+    background: #ffffff;
+    transform: translate(-50%, -50%);
+}
+
+.app6-identity {
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(0, 166, 255, 0.8);
+    padding: 1px 4px;
+    font-size: 0.62rem;
+    line-height: 1;
+}
+
+.app6-asset-icon {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    color: #ffffff;
+    font-size: 18px;
+    line-height: 1;
+    transform: translate(-50%, -50%);
+}
+
+.app6-asset-person .app6-asset-icon::before {
+    content: "P";
+}
+
+.app6-asset-bicycle .app6-asset-icon::before {
+    content: "B";
+}
+
+.app6-asset-motorcycle .app6-asset-icon::before {
+    content: "M";
+}
+
+.app6-asset-car .app6-asset-icon::before {
+    content: "V";
+}
+
+.app6-asset-hq .app6-asset-icon::before {
+    content: "HQ";
+    font-size: 13px;
+}
+
+.app6-asset-hq .app6-frame {
+    border-radius: 2px;
+}
+
+.app6-data-block {
+    position: absolute;
+    left: 54px;
+    top: 50%;
+    color: #b8ecff;
+    background: rgba(0, 0, 0, 0.82);
+    border-left: 2px solid #00a6ff;
+    padding: 3px 5px;
+    font-size: 0.62rem;
+    line-height: 1.25;
+    white-space: nowrap;
+    text-shadow: 0 0 4px #000;
+    transform: translateY(-50%);
 }
 
 .destination-marker {
@@ -166,6 +248,23 @@ h3 {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+}
+
+.field-label {
+    display: block;
+    margin: 14px 0 6px;
+    color: rgba(0, 255, 0, 0.82);
+    font-size: 0.75rem;
+}
+
+#asset-type {
+    width: 100%;
+    margin-bottom: 14px;
+    background: rgba(0, 50, 0, 0.3);
+    border: 1px solid #00ff00;
+    color: #00ff00;
+    padding: 6px;
+    font-family: inherit;
 }
 
 button:disabled {

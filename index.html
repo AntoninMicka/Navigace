@@ -49,6 +49,14 @@
                 </div>
                 <div id="intel-screen" class="panel-section">
                     <h3>TELEMETRIE</h3>
+                    <label class="field-label" for="asset-type">SYMBOL</label>
+                    <select id="asset-type">
+                        <option value="person">Pěšák</option>
+                        <option value="bicycle">Kolo</option>
+                        <option value="motorcycle">Motocykl</option>
+                        <option value="car" selected>Auto</option>
+                        <option value="hq" data-admin-only>Velitelství</option>
+                    </select>
                     <div class="intel-data">
                         <p>STATUS: <span id="status" class="text-green">ONLINE</span></p>
                         <p>LAT: <span id="pos-lat">--</span></p>

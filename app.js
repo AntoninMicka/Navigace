@@ -9,9 +9,26 @@ const map = new maplibregl.Map({
 
 // Značka uživatele (Friendly Unit)
 const userEl = document.createElement('div');
-userEl.className = 'user-marker';
+userEl.className = 'app6-marker app6-marker-self app6-asset-car';
+userEl.innerHTML = `
+    <div class="app6-symbol" aria-label="Friendly self equipment">
+        <div class="app6-frame app6-equipment-frame">
+            <div class="app6-asset-icon"></div>
+        </div>
+        <div class="app6-identity">SELF</div>
+    </div>
+    <div class="app6-data-block">
+        <div id="self-pos-lat">LAT --</div>
+        <div id="self-pos-lon">LON --</div>
+        <div id="self-pos-hdg">HDG --</div>
+    </div>
+`;
 
 const userMarker = new maplibregl.Marker({ element: userEl, anchor: 'center' });
+const APP6_ASSET_TYPES = ['person', 'bicycle', 'motorcycle', 'car', 'hq'];
+const isAdminView = new URLSearchParams(window.location.search).get('admin') === '1'
+    || localStorage.getItem('tacnav_admin') === '1';
+let currentAssetType = localStorage.getItem('tacnav_asset_type') || 'car';
 
 let isFirstLocation = true;
 let currentLng = null;
@@ -44,6 +61,18 @@ function sysLog(msg) {
     while (log.children.length > 5) {
         log.removeChild(log.lastChild);
     }
+}
+
+function setAssetType(type) {
+    const safeType = APP6_ASSET_TYPES.includes(type) ? type : 'car';
+    const nextType = safeType === 'hq' && !isAdminView ? 'car' : safeType;
+
+    APP6_ASSET_TYPES.forEach((assetType) => {
+        userEl.classList.toggle(`app6-asset-${assetType}`, assetType === nextType);
+    });
+
+    currentAssetType = nextType;
+    localStorage.setItem('tacnav_asset_type', currentAssetType);
 }
 
 // --- BFT: Blue Force Tracking ---
@@ -481,6 +510,9 @@ function handlePositionSuccess(position) {
     document.getElementById('pos-lon').innerText = lng.toFixed(5);
     document.getElementById('pos-speed').innerText = speedKmh > 0 ? displaySpeed : '0';
     document.getElementById('pos-heading').innerText = displayHeading;
+    document.getElementById('self-pos-lat').innerText = `LAT ${lat.toFixed(5)}`;
+    document.getElementById('self-pos-lon').innerText = `LON ${lng.toFixed(5)}`;
+    document.getElementById('self-pos-hdg').innerText = `HDG ${displayHeading}`;
 
     // Update Map
     userMarker.setLngLat([lng, lat]).addTo(map);
@@ -732,6 +764,17 @@ renderPOIs(); // Vykreslit POI při startu aplikace
 
 document.getElementById('btn-start-nav').addEventListener('click', startNavigation);
 document.getElementById('btn-stop-nav').addEventListener('click', stopNavigation);
+
+const assetTypeSelect = document.getElementById('asset-type');
+if (!isAdminView) {
+    assetTypeSelect.querySelectorAll('[data-admin-only]').forEach((option) => option.remove());
+}
+setAssetType(currentAssetType);
+assetTypeSelect.value = currentAssetType;
+assetTypeSelect.addEventListener('change', (e) => {
+    setAssetType(e.target.value);
+    e.target.value = currentAssetType;
+});
 
 // Skrývání logů
 const logToggleBtn = document.getElementById('btn-log-toggle');
