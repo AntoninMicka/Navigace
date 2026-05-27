@@ -15,6 +15,14 @@
 </head>
 <body>
     <div id="app-container">
+        <!-- CRT a Taktický Overlay -->
+        <div id="crt-overlay"></div>
+        <div id="crosshair">
+            <div class="ch-line ch-v"></div>
+            <div class="ch-line ch-h"></div>
+            <div class="ch-center"></div>
+        </div>
+
         <!-- Systémové logy plovoucí přes mapu -->
         <div id="sys-log">
             <p>[SYS] Inicializace spojení...</p>
@@ -66,9 +74,9 @@
                     </div>
                 </div>
             </div>
-            <div id="overview-map-container">
-                <div id="overview-map"></div>
-            </div>
+        </div>
+        <div id="overview-map-container">
+            <div id="overview-map"></div>
         </div>
         <nav id="mobile-tabs" aria-label="Mobilní navigace">
             <button class="mobile-tab is-active" data-screen="map">MAPA</button>

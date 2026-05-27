@@ -49,6 +49,37 @@ const MAX_ROUTE_SNAP_DISTANCE_METERS = 100;
 // Overview mapa pro velký displej
 let overviewMap = null;
 let overviewUserMarker = null;
+let overviewDestinationMarker = null;
+
+// Inicializace přehledové mapy (Overview)
+overviewMap = new maplibregl.Map({
+    container: 'overview-map',
+    style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+    center: [15.473, 49.817],
+    zoom: 5,
+    pitch: 0,
+    bearing: 0,
+    dragRotate: false,
+    touchPitch: false
+});
+
+// Značka uživatele na přehledové mapě (bez textových popisků pro přehlednost)
+const overviewUserEl = document.createElement('div');
+overviewUserEl.className = 'app6-marker app6-marker-self app6-asset-car';
+overviewUserEl.innerHTML = `
+    <div class="app6-symbol" style="transform: scale(0.7); transform-origin: top left;">
+        <div class="app6-frame app6-equipment-frame">
+            <div class="app6-asset-icon"></div>
+        </div>
+    </div>
+`;
+overviewUserMarker = new maplibregl.Marker({ element: overviewUserEl, anchor: 'center' })
+    .setLngLat([15.473, 49.817])
+    .addTo(overviewMap);
+
+window.addEventListener('resize', () => {
+    if (window.innerWidth >= 768 && overviewMap) overviewMap.resize();
+});
 
 // Logovací funkce do panelu
 function sysLog(msg, options = {}) {
@@ -78,6 +109,9 @@ function setAssetType(type) {
 
     APP6_ASSET_TYPES.forEach((assetType) => {
         userEl.classList.toggle(`app6-asset-${assetType}`, assetType === nextType);
+        if (overviewUserMarker) {
+            overviewUserMarker.getElement().classList.toggle(`app6-asset-${assetType}`, assetType === nextType);
+        }
     });
 
     currentAssetType = nextType;
@@ -109,6 +143,7 @@ if (socket) {
         for (let id in bftMarkers) {
             if (!activeIds.has(id)) {
                 bftMarkers[id].marker.remove();
+                if (bftMarkers[id].overviewMarker) bftMarkers[id].overviewMarker.remove();
                 delete bftMarkers[id];
             }
         }
@@ -121,6 +156,17 @@ if (socket) {
                 createBftMarker(u);
             } else {
                 bftMarkers[u.id].marker.setLngLat([u.lng, u.lat]);
+                
+                if (bftMarkers[u.id].overviewMarker) {
+                    bftMarkers[u.id].overviewMarker.setLngLat([u.lng, u.lat]);
+                    const currentClass = Array.from(bftMarkers[u.id].overviewEl.classList).find(c => c.startsWith('app6-asset-'));
+                    const newClass = `app6-asset-${u.assetType || 'car'}`;
+                    if (currentClass !== newClass) {
+                        if (currentClass) bftMarkers[u.id].overviewEl.classList.remove(currentClass);
+                        bftMarkers[u.id].overviewEl.classList.add(newClass);
+                    }
+                }
+
                 bftMarkers[u.id].el.querySelector('.app6-amp-z').innerText = `${u.speed || 0} km/h`;
                 bftMarkers[u.id].el.querySelector('.app6-amp-h').innerText = `HDG ${u.heading || '--'}`;
                 
@@ -379,6 +425,15 @@ function setDestinationMarker(destLng, destLat) {
     }
 
     destinationMarker.setLngLat([destLng, destLat]).addTo(map);
+
+    if (overviewMap) {
+        if (!overviewDestinationMarker) {
+            const el = document.createElement('div');
+            el.innerHTML = `<div class="destination-marker" style="transform: translate(-50%, -50%) scale(0.6); position: absolute; left: 0; top: 0;"></div>`;
+            overviewDestinationMarker = new maplibregl.Marker({ element: el, anchor: 'center' });
+        }
+        overviewDestinationMarker.setLngLat([destLng, destLat]).addTo(overviewMap);
+    }
 }
 
 function updateNavigationButtons() {
@@ -467,6 +522,22 @@ async function renderRoute(routeGeometry) {
         map.addLayer(routeLayer, beforeId);
     } else {
         map.addLayer(routeLayer);
+    }
+
+    // Přidání trasy i na přehledovou mapu
+    if (overviewMap && overviewMap.isStyleLoaded()) {
+        if (overviewMap.getSource('route')) {
+            overviewMap.getSource('route').setData(geojson);
+        } else {
+            overviewMap.addSource('route', { type: 'geojson', data: geojson });
+            overviewMap.addLayer({
+                id: 'route',
+                type: 'line',
+                source: 'route',
+                layout: { 'line-join': 'round', 'line-cap': 'round' },
+                paint: { 'line-color': '#00ff00', 'line-width': 3, 'line-opacity': 0.75 }
+            });
+        }
     }
 }
 
@@ -573,8 +644,10 @@ function handlePositionSuccess(position) {
 
     // Update Overview Mapy (pokud existuje)
     if (overviewMap) {
-        overviewMap.setCenter([lng, lat]);
         overviewUserMarker.setLngLat([lng, lat]);
+        if (!routePreviewReady) {
+            overviewMap.setCenter([lng, lat]);
+        }
     }
 
     if (isFirstLocation) {
@@ -749,17 +822,26 @@ function createBftMarker(u) {
     `;
     
     const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([u.lng, u.lat]).addTo(map);
-    bftMarkers[u.id] = { marker, el };
+    
+    let overviewMarker = null;
+    let overviewEl = null;
+    if (overviewMap) {
+        overviewEl = document.createElement('div');
+        overviewEl.className = `app6-marker app6-asset-${u.assetType || 'car'}`;
+        overviewEl.innerHTML = `
+            <div class="app6-symbol" style="transform: scale(0.6); transform-origin: top left;">
+                <div class="app6-frame app6-equipment-frame">
+                    <div class="app6-asset-icon"></div>
+                </div>
+            </div>
+        `;
+        overviewMarker = new maplibregl.Marker({ element: overviewEl, anchor: 'center' }).setLngLat([u.lng, u.lat]).addTo(overviewMap);
+    }
+    bftMarkers[u.id] = { marker, el, overviewMarker, overviewEl };
 }
 
 // Centrování mapy (Tlačítko CENTER)
 document.getElementById('btn-locate').addEventListener('click', () => {
-    // Prohlížeče vyžadují interakci uživatele pro spuštění audia
-    if (audioContext && audioContext.state === 'suspended') {
-        audioContext.resume().then(() => {
-            sysLog('Audio systém aktivován.');
-        });
-    }
     requestCompassAccess();
     if (hasLocation) {
         if (isNavigating) {
@@ -894,7 +976,21 @@ async function fetchAndRenderEvents() {
                     .setLngLat([evt.lng, evt.lat])
                     .addTo(map);
                 
-                eventMarkers[evt.id] = { marker, el };
+                let overviewMarker = null;
+                if (overviewMap) {
+                    const overviewEl = document.createElement('div');
+                    overviewEl.className = `app6-marker app6-hazard`;
+                    overviewEl.innerHTML = `
+                        <div class="app6-symbol" style="transform: scale(0.6); transform-origin: top left;">
+                            <div class="app6-frame app6-hazard-frame">
+                                <div class="app6-asset-icon">${iconText}</div>
+                            </div>
+                        </div>
+                    `;
+                    overviewMarker = new maplibregl.Marker({ element: overviewEl, anchor: 'center' }).setLngLat([evt.lng, evt.lat]).addTo(overviewMap);
+                }
+                
+                eventMarkers[evt.id] = { marker, el, overviewMarker };
             }
         });
         
@@ -937,7 +1033,21 @@ async function fetchAndRenderRadars() {
                     .setLngLat([rad.lng, rad.lat])
                     .addTo(map);
                 
-                eventMarkers[rad.id] = { marker, el };
+                let overviewMarker = null;
+                if (overviewMap) {
+                    const overviewEl = document.createElement('div');
+                    overviewEl.className = `app6-marker app6-hazard`;
+                    overviewEl.innerHTML = `
+                        <div class="app6-symbol" style="transform: scale(0.6); transform-origin: top left;">
+                            <div class="app6-frame app6-hazard-frame">
+                                <div class="app6-asset-icon">SNS</div>
+                            </div>
+                        </div>
+                    `;
+                    overviewMarker = new maplibregl.Marker({ element: overviewEl, anchor: 'center' }).setLngLat([rad.lng, rad.lat]).addTo(overviewMap);
+                }
+                
+                eventMarkers[rad.id] = { marker, el, overviewMarker };
             }
         });
         
@@ -961,6 +1071,15 @@ const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 const ttsEnabled = 'speechSynthesis' in window;
 let speechQueue = [];
 let isSpeaking = false;
+
+// Povolení audia při prvním kliknutí kamkoliv do aplikace (prohlížeče blokují autoplay)
+document.body.addEventListener('click', () => {
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().then(() => {
+            sysLog('Audio systém aktivován.');
+        });
+    }
+}, { once: true });
 
 function playBeep(type = 'notice') {
     if (!audioContext || audioContext.state !== 'running') return;
