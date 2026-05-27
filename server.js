@@ -19,19 +19,22 @@ function hasValidLngLat(lng, lat) {
 }
 
 app.get('/api/route', async (req, res) => {
-    const { fromLng, fromLat, toLng, toLat } = req.query;
+    const { fromLng, fromLat, toLng, toLat, profile } = req.query;
     const coords = [fromLng, fromLat, toLng, toLat].map(Number);
     const [startLng, startLat, destLng, destLat] = coords;
+
+    const validProfiles = ['driving', 'foot', 'bicycle'];
+    const routeProfile = validProfiles.includes(profile) ? profile : 'driving';
 
     if (!hasValidLngLat(startLng, startLat) || !hasValidLngLat(destLng, destLat)) {
         res.status(400).json({ code: 'InvalidCoordinates', message: 'Route coordinates must be valid numbers.' });
         return;
     }
 
-    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+    const osrmUrl = `https://router.project-osrm.org/route/v1/${routeProfile}/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true`;
 
     try {
-        const response = await fetch(osrmUrl);
+        const response = await fetch(osrmUrl, { headers: { 'User-Agent': 'TacticalNav/1.0 (Node.js backend)' } });
         const data = await response.json();
 
         if (!response.ok) {
@@ -48,16 +51,20 @@ app.get('/api/route', async (req, res) => {
 app.get('/api/nearest', async (req, res) => {
     const lng = Number(req.query.lng);
     const lat = Number(req.query.lat);
+    const profile = req.query.profile;
+
+    const validProfiles = ['driving', 'foot', 'bicycle'];
+    const routeProfile = validProfiles.includes(profile) ? profile : 'driving';
 
     if (!hasValidLngLat(lng, lat)) {
         res.status(400).json({ code: 'InvalidCoordinates', message: 'Nearest coordinates must be valid numbers.' });
         return;
     }
 
-    const osrmUrl = `https://router.project-osrm.org/nearest/v1/driving/${lng},${lat}?number=1`;
+    const osrmUrl = `https://router.project-osrm.org/nearest/v1/${routeProfile}/${lng},${lat}?number=1`;
 
     try {
-        const response = await fetch(osrmUrl);
+        const response = await fetch(osrmUrl, { headers: { 'User-Agent': 'TacticalNav/1.0 (Node.js backend)' } });
         const data = await response.json();
 
         if (!response.ok) {
@@ -85,7 +92,7 @@ app.get('/api/events', async (req, res) => {
     if (now - lastEventsFetch > EVENTS_CACHE_TTL) {
         if (NDIC_API_KEY) {
             try {
-                const apiUrl = 'https://api.dopravniinfo.cz/v1/situations?area=all';
+                const apiUrl = 'https://api.dopravniinfo.cz/v1/situations?area=republic';
                 const response = await fetch(apiUrl, {
                     headers: {
                         'X-Api-Key': NDIC_API_KEY,

@@ -40,6 +40,7 @@ let isTracking = false; // Sledování aktivní / Preview mod
 let isNavigating = false;
 let currentDestLng = null;
 let currentDestLat = null;
+let currentRouteSteps = []; // Pokyny pro navigaci
 let currentRouteCoords = []; // Souřadnice trasy pro výpočet odchylky
 let destinationMarker = null;
 let routePreviewReady = false;
@@ -50,15 +51,24 @@ let overviewMap = null;
 let overviewUserMarker = null;
 
 // Logovací funkce do panelu
-function sysLog(msg) {
+function sysLog(msg, options = {}) {
     const log = document.getElementById('sys-log');
     const p = document.createElement('p');
     p.innerText = `[SYS] ${msg}`;
     log.prepend(p);
-    
+
     // Omezit logy zobrazené na mapě na maximálně posledních 5 zpráv
     while (log.children.length > 5) {
         log.removeChild(log.lastChild);
+    }
+
+    if (options.speak) {
+        // Vyčistit text pro hlasový výstup
+        const textToSpeak = msg.replace(/\[.*?\]/g, '').replace(/\{.*?\}/g, '').trim();
+        if (textToSpeak) {
+            // Hlášení s vysokou prioritou přeruší ostatní
+            speak(textToSpeak, options.priority || false);
+        }
     }
 }
 
@@ -255,12 +265,26 @@ function getRouteLayerBeforeId() {
     return preferredLayers.find((id) => map.getLayer(id));
 }
 
-function getExternalRouteUrl(startLng, startLat, destLng, destLat) {
-    return `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+function getExternalRouteUrl(startLng, startLat, destLng, destLat, profile = 'driving') {
+    return `https://router.project-osrm.org/route/v1/${profile}/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true`;
 }
 
-function getExternalNearestUrl(lng, lat) {
-    return `https://router.project-osrm.org/nearest/v1/driving/${lng},${lat}?number=1`;
+function getExternalNearestUrl(lng, lat, profile = 'driving') {
+    return `https://router.project-osrm.org/nearest/v1/${profile}/${lng},${lat}?number=1`;
+}
+
+function getRoutingProfile() {
+    switch (currentAssetType) {
+        case 'person':
+            return 'foot';
+        case 'bicycle':
+            return 'bicycle';
+        case 'motorcycle':
+        case 'car':
+        case 'hq':
+        default:
+            return 'driving';
+    }
 }
 
 function isValidLngLat(lng, lat) {
@@ -284,39 +308,41 @@ async function fetchJson(url, errorPrefix) {
     return data;
 }
 
-async function requestRouteData(startLng, startLat, destLng, destLat) {
+async function requestRouteData(startLng, startLat, destLng, destLat, profile = 'driving') {
     const params = new URLSearchParams({
         fromLng: startLng,
         fromLat: startLat,
         toLng: destLng,
-        toLat: destLat
+        toLat: destLat,
+        profile: profile
     });
 
     try {
         return await fetchJson(`/api/route?${params}`, 'Proxy');
     } catch (proxyErr) {
         sysLog(`WARN: Proxy routing nedostupný (${proxyErr.message}).`);
-        return fetchJson(getExternalRouteUrl(startLng, startLat, destLng, destLat), 'OSRM');
+        // Fallback to direct OSRM call with the correct profile
+        return fetchJson(getExternalRouteUrl(startLng, startLat, destLng, destLat, profile), 'OSRM');
     }
 }
 
-async function requestNearestData(lng, lat) {
-    const params = new URLSearchParams({ lng, lat });
+async function requestNearestData(lng, lat, profile = 'driving') {
+    const params = new URLSearchParams({ lng, lat, profile });
 
     try {
         return await fetchJson(`/api/nearest?${params}`, 'Proxy nearest');
     } catch (proxyErr) {
         sysLog(`WARN: Proxy nearest nedostupný (${proxyErr.message}).`);
-        return fetchJson(getExternalNearestUrl(lng, lat), 'OSRM nearest');
+        return fetchJson(getExternalNearestUrl(lng, lat, profile), 'OSRM nearest');
     }
 }
 
-async function snapToRoadNetwork(lng, lat, label) {
+async function snapToRoadNetwork(lng, lat, label, profile = 'driving') {
     if (!isValidLngLat(lng, lat)) {
         throw new Error(`${label}: neplatné souřadnice`);
     }
-
-    const data = await requestNearestData(lng, lat);
+    
+    const data = await requestNearestData(lng, lat, profile);
     const waypoint = data.waypoints && data.waypoints[0];
 
     if (data.code !== 'Ok' || !waypoint || !Array.isArray(waypoint.location)) {
@@ -400,8 +426,8 @@ function startNavigation() {
 
     setMobileScreen('map');
     setTimeout(() => focusCurrentPosition(650), 80);
-    setTimeout(() => focusCurrentPosition(250), 350);
-    sysLog('Navigace spuštěna.');
+    setTimeout(() => focusCurrentPosition(250), 350, { speak: true });
+    sysLog('Navigace spuštěna.', { speak: true });
 }
 
 function stopNavigation() {
@@ -409,7 +435,7 @@ function stopNavigation() {
     isTracking = false;
     updateNavigationButtons();
     map.easeTo({ pitch: 0, duration: 500 });
-    sysLog(routePreviewReady ? 'Navigace zastavena, trasa zůstává v preview.' : 'Navigace zastavena.');
+    sysLog(routePreviewReady ? 'Navigace zastavena, trasa zůstává v preview.' : 'Navigace zastavena.', { speak: true });
 }
 
 async function renderRoute(routeGeometry) {
@@ -454,24 +480,34 @@ async function calculateRoute(destLng, destLat, options = {}) {
     }
     try {
         sysLog('Vyžaduji taktickou trasu...');
-        const startPoint = await snapToRoadNetwork(currentLng, currentLat, 'Start');
-        const destPoint = await snapToRoadNetwork(destLng, destLat, 'Cíl');
-        const data = await requestRouteData(startPoint.lng, startPoint.lat, destPoint.lng, destPoint.lat);
+        const profile = getRoutingProfile();
+        sysLog(`Profil trasy: ${profile.toUpperCase()}`);
+        const startPoint = await snapToRoadNetwork(currentLng, currentLat, 'Start', profile);
+        const destPoint = await snapToRoadNetwork(destLng, destLat, 'Cíl', profile);
+        const data = await requestRouteData(startPoint.lng, startPoint.lat, destPoint.lng, destPoint.lat, profile);
         
         if (data.routes && data.routes.length > 0) {
             const route = data.routes[0];
+            const leg = route.legs && route.legs[0];
 
             setDestinationMarker(destPoint.lng, destPoint.lat);
             await renderRoute(route.geometry);
 
             currentDestLng = destPoint.lng;
             currentDestLat = destPoint.lat;
-            currentRouteCoords = route.geometry.coordinates; // Záchyt souřadnic trasy
+            currentRouteCoords = route.geometry.coordinates;
             routePreviewReady = true;
             isNavigating = startNavigationAfterRoute;
             isTracking = startNavigationAfterRoute;
             updateNavigationButtons();
             
+            if (leg && leg.steps) {
+                leg.steps.forEach(step => delete step.announced); // Vyčistit staré příznaky
+                currentRouteSteps = leg.steps;
+            } else {
+                currentRouteSteps = [];
+            }
+
             if (isNavigating) {
                 setTimeout(() => focusCurrentPosition(350), 80);
                 sysLog(`Trasa aktualizována: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min.`);
@@ -583,6 +619,36 @@ function handlePositionSuccess(position) {
             }
         }
     }
+
+    // --- UI a Hlášení Navigace ---
+    if (isNavigating) {
+        updateNavStepsUI(lng, lat);
+
+        // Najdeme nejbližší budoucí krok na trase pro hlasové hlášení
+        let closestStepForAnnounce = null;
+        let minDistanceForAnnounce = Infinity;
+
+        for (const step of currentRouteSteps) {
+            if (step.passed) continue;
+            const maneuverPoint = step.maneuver.location;
+            const distance = new maplibregl.LngLat(lng, lat).distanceTo(new maplibregl.LngLat(maneuverPoint[0], maneuverPoint[1]));
+            if (distance < minDistanceForAnnounce) {
+                minDistanceForAnnounce = distance;
+                closestStepForAnnounce = step;
+            }
+        }
+
+        if (closestStepForAnnounce && minDistanceForAnnounce < 300 && !closestStepForAnnounce.announced) {
+            const stepToAnnounce = closestStepForAnnounce;
+            const instruction = formatManeuver(stepToAnnounce);
+            sysLog(`NAV: ${instruction} (${Math.round(minDistanceForAnnounce)}m)`);
+            speak(instruction, true);
+            stepToAnnounce.announced = true;
+        }
+    } else {
+        // Pokud nenavigujeme, ale je připravená trasa, aktualizujeme UI
+        updateNavStepsUI(lng, lat);
+    }
 }
 
 // Funkce pro zpracování chyby GPS
@@ -688,6 +754,12 @@ function createBftMarker(u) {
 
 // Centrování mapy (Tlačítko CENTER)
 document.getElementById('btn-locate').addEventListener('click', () => {
+    // Prohlížeče vyžadují interakci uživatele pro spuštění audia
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().then(() => {
+            sysLog('Audio systém aktivován.');
+        });
+    }
     requestCompassAccess();
     if (hasLocation) {
         if (isNavigating) {
@@ -800,6 +872,7 @@ async function fetchAndRenderEvents() {
             if (!eventMarkers[evt.id]) {
                 newEventsCount++;
                 const el = document.createElement('div');
+                el.id = `evt-${evt.id}`;
                 
                 let iconText = 'UNK'; // Unknown default
                 if (evt.type === 'accident') iconText = 'HAZ'; // Hazard
@@ -845,6 +918,7 @@ async function fetchAndRenderRadars() {
             if (!eventMarkers[rad.id]) {
                 newCount++;
                 const el = document.createElement('div');
+                el.id = `evt-${rad.id}`;
                 
                 // Využijeme existující CSS třídu app6-hazard (červený kosočtverec)
                 el.className = `app6-marker app6-hazard`;
@@ -882,6 +956,164 @@ setInterval(fetchAndRenderEvents, 60000); // Aktualizace každou minutu
 setTimeout(fetchAndRenderRadars, 3000);
 setInterval(fetchAndRenderRadars, 60000 * 5); // Radary stačí aktualizovat jen občas (5 minut)
 
+// --- Audio Engine (TTS a Beepy) ---
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+const ttsEnabled = 'speechSynthesis' in window;
+let speechQueue = [];
+let isSpeaking = false;
+
+function playBeep(type = 'notice') {
+    if (!audioContext || audioContext.state !== 'running') return;
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    if (type === 'alert') {
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.3);
+    } else {
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.2);
+    }
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.4);
+}
+
+function processSpeechQueue() {
+    if (isSpeaking || speechQueue.length === 0 || !ttsEnabled) return;
+    isSpeaking = true;
+    const textToSpeak = speechQueue.shift();
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    utterance.lang = 'cs-CZ';
+    utterance.rate = 1.2;
+    utterance.onend = () => {
+        isSpeaking = false;
+        setTimeout(processSpeechQueue, 150);
+    };
+    utterance.onerror = () => {
+        isSpeaking = false;
+        processSpeechQueue();
+    };
+    window.speechSynthesis.speak(utterance);
+}
+
+function speak(text, priority = false) {
+    if (!ttsEnabled) {
+        playBeep(priority ? 'alert' : 'notice');
+        return;
+    }
+    if (priority) {
+        window.speechSynthesis.cancel();
+        isSpeaking = false;
+        speechQueue.unshift(text);
+    } else {
+        speechQueue.push(text);
+    }
+    processSpeechQueue();
+}
+
+function getManeuverIcon(step) {
+    const type = step.maneuver.type;
+    const modifier = step.maneuver.modifier || '';
+    
+    if (type === 'arrive') return '🏁';
+    if (modifier.includes('straight')) return '↑';
+    if (modifier.includes('slight right')) return '↗';
+    if (modifier.includes('right')) return '→';
+    if (modifier.includes('sharp right')) return '↘';
+    if (modifier.includes('slight left')) return '↖';
+    if (modifier.includes('left')) return '←';
+    if (modifier.includes('sharp left')) return '↙';
+    if (type === 'roundabout') return '🔄';
+    
+    return '•';
+}
+
+function updateNavStepsUI(lng, lat) {
+    const navStepsEl = document.getElementById('nav-steps');
+
+    if (!routePreviewReady || currentRouteSteps.length === 0) {
+        navStepsEl.classList.remove('visible');
+        return;
+    }
+
+    const upcomingSteps = [];
+    for (const step of currentRouteSteps) {
+        if (step.passed) continue;
+
+        const maneuverPoint = step.maneuver.location;
+        const distance = (lng && lat) 
+            ? new maplibregl.LngLat(lng, lat).distanceTo(new maplibregl.LngLat(maneuverPoint[0], maneuverPoint[1]))
+            : step.distance;
+        
+        upcomingSteps.push({
+            distance,
+            instruction: formatManeuver(step),
+            icon: getManeuverIcon(step)
+        });
+    }
+
+    const maxStepsToShow = window.innerWidth >= 768 ? 3 : 1;
+    const stepsToShow = upcomingSteps.slice(0, maxStepsToShow);
+
+    navStepsEl.innerHTML = stepsToShow.map(step => `
+        <div class="nav-step">
+            <span class="nav-step-icon">${step.icon}</span>
+            <div class="nav-step-info">
+                <div class="nav-step-distance">${step.distance < 1000 ? Math.round(step.distance / 10) * 10 + ' m' : (step.distance / 1000).toFixed(1) + ' km'}</div>
+                <div class="nav-step-instruction">${step.instruction}</div>
+            </div>
+        </div>
+    `).join('');
+
+    navStepsEl.classList.add('visible');
+}
+
+function formatManeuver(step) {
+    const type = step.maneuver.type;
+    const modifier = step.maneuver.modifier || '';
+    let instruction = '';
+    switch (type) {
+        case 'turn': case 'fork': case 'off ramp': case 'on ramp':
+            if (modifier.includes('left')) instruction = 'Odbočte vlevo';
+            else if (modifier.includes('right')) instruction = 'Odbočte vpravo';
+            else if (modifier.includes('straight')) instruction = 'Jeďte rovně';
+            break;
+        case 'roundabout':
+            instruction = `Na kruhovém objezdu sjeďte ${step.maneuver.exit || 1}. výjezdem`;
+            break;
+        case 'depart': instruction = `Vyjeďte směr ${step.name}`; break;
+        case 'arrive': instruction = 'Dorazili jste do cíle.'; break;
+    }
+    return instruction;
+}
+
+// --- Proximity Alert System ---
+const alertedEvents = new Set();
+const PROXIMITY_ALERT_DISTANCE_METERS = 350;
+
+function checkProximity() {
+    if (!hasLocation || !isNavigating) return;
+
+    Object.values(eventMarkers).forEach(threat => {
+        const threatId = threat.marker.getElement().id;
+        if (!threatId || alertedEvents.has(threatId)) return;
+
+        const distance = new maplibregl.LngLat(currentLng, currentLat).distanceTo(threat.marker.getLngLat());
+        if (distance < PROXIMITY_ALERT_DISTANCE_METERS) {
+            const description = threat.marker.getElement().querySelector('.app6-amp-h')?.innerText || 'hrozba';
+            sysLog(`ALERT: ${description} (${Math.round(distance)}m)`, { speak: true, priority: true });
+            alertedEvents.add(threatId);
+        }
+    });
+}
+setInterval(checkProximity, 2500);
+
 // --- UI Toggles ---
 
 document.getElementById('btn-start-nav').addEventListener('click', startNavigation);
@@ -911,6 +1143,19 @@ logToggleBtn.addEventListener('click', () => {
 // HUD Modulace
 const hudBtn = document.getElementById('btn-hud');
 const appContainer = document.getElementById('app-container');
+
+const topLeftContainer = document.createElement('div');
+topLeftContainer.id = 'top-left-ui';
+appContainer.insertBefore(topLeftContainer, appContainer.firstChild);
+
+const navStepsEl = document.createElement('div');
+navStepsEl.id = 'nav-steps';
+topLeftContainer.appendChild(navStepsEl);
+
+// Přesunout existující sys-log do nového kontejneru
+if (sysLogEl) {
+    topLeftContainer.appendChild(sysLogEl);
+}
 
 function setMobileScreen(screen) {
     appContainer.classList.remove('screen-map', 'screen-search', 'screen-intel');

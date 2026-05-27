@@ -188,39 +188,6 @@ body, html {
     transform: translateY(-50%);
 }
 
-.destination-marker {
-    width: 22px;
-    height: 22px;
-    border: 2px solid #ffcc00;
-    border-radius: 50%;
-    background: rgba(255, 204, 0, 0.15);
-    box-shadow: 0 0 12px rgba(255, 204, 0, 0.85);
-    position: relative;
-}
-
-.destination-marker::before,
-.destination-marker::after {
-    content: "";
-    position: absolute;
-    background: #ffcc00;
-}
-
-.destination-marker::before {
-    left: 50%;
-    top: -6px;
-    width: 2px;
-    height: 30px;
-    transform: translateX(-50%);
-}
-
-.destination-marker::after {
-    left: -6px;
-    top: 50%;
-    width: 30px;
-    height: 2px;
-    transform: translateY(-50%);
-}
-
 #sidebar {
     display: none;
     flex-direction: column;
@@ -230,6 +197,82 @@ body, html {
     background: #050505;
 }
 
+#top-left-ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none; /* Kontejner samotný není interaktivní */
+    width: 70%;
+    max-width: 320px;
+}
+
+/* Panel s navigačními kroky */
+#nav-steps {
+    display: none; /* Skryto ve výchozím stavu */
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: auto;
+}
+
+#nav-steps.visible {
+    display: flex;
+}
+
+.nav-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 25, 0, 0.85);
+    border: 1px solid #00ff00;
+    padding: 8px;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+}
+
+.nav-step-icon {
+    font-size: 1.8rem;
+    color: #ffcc00;
+    flex-shrink: 0;
+    width: 30px;
+    text-align: center;
+}
+
+.nav-step-info {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.nav-step-distance {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.nav-step-instruction {
+    font-size: 0.9rem;
+    color: #00ff00;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Logy plovoucí přes mapu */
+#sys-log {
+    position: relative; /* Již není absolutní, je v #top-left-ui */
+    top: auto;
+    left: auto;
+    pointer-events: auto;
+    color: rgba(0, 255, 0, 0.8);
+    font-size: 0.8rem;
+    text-shadow: 1px 1px 3px #000;
+    width: 100%;
+}
+
+
 #panel {
     flex: 1;
     overflow-y: auto;
@@ -238,6 +281,16 @@ body, html {
     border-top: none;
     box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
 }
+
+#sys-log p {
+    margin: 2px 0;
+}
+
+#app-container.screen-search #sys-log,
+#app-container.screen-intel #sys-log {
+    display: none;
+}
+
 
 #app-container.screen-search #map,
 #app-container.screen-intel #map {
@@ -344,37 +397,41 @@ button:disabled {
     margin: 0;
 }
 
-/* Logy plovoucí přes mapu */
-#sys-log {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    z-index: 10;
-    pointer-events: none; /* Kliknutí propadne skrz na mapu */
-    color: rgba(0, 255, 0, 0.8);
-    font-size: 0.8rem;
-    text-shadow: 1px 1px 3px #000;
-    width: 70%;
-}
-
-@media (min-width: 768px) {
-    #sys-log {
-        font-size: 0.9rem;
-        width: 300px;
-    }
-}
-
-#sys-log p {
-    margin: 2px 0;
-}
-
-#app-container.screen-search #sys-log,
-#app-container.screen-intel #sys-log {
-    display: none;
-}
-
 .logs-hidden {
     display: none;
+}
+
+.destination-marker {
+    width: 22px;
+    height: 22px;
+    border: 2px solid #ffcc00;
+    border-radius: 50%;
+    background: rgba(255, 204, 0, 0.15);
+    box-shadow: 0 0 12px rgba(255, 204, 0, 0.85);
+    position: relative;
+}
+
+.destination-marker::before,
+.destination-marker::after {
+    content: "";
+    position: absolute;
+    background: #ffcc00;
+}
+
+.destination-marker::before {
+    left: 50%;
+    top: -6px;
+    width: 2px;
+    height: 30px;
+    transform: translateX(-50%);
+}
+
+.destination-marker::after {
+    left: -6px;
+    top: 50%;
+    width: 30px;
+    height: 2px;
+    transform: translateY(-50%);
 }
 
 #overview-map-container {
