@@ -10,6 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const NDIC_API_KEY = process.env.NDIC_API_KEY || null; // API klíč pro api.dopravniinfo.cz
 const HTTPS_PORT = process.env.HTTPS_PORT || 3443;
+const DISABLE_BACKEND_CACHE = process.env.DISABLE_BACKEND_CACHE === 'true'; // Vypnutí cache
 
 // Statické servírování souborů ze složky, kde je spuštěn server
 app.use(express.static(path.join(__dirname)));
@@ -87,9 +88,11 @@ app.get('/api/events', async (req, res) => {
     const centerLat = Number(req.query.lat) || 49.817;
     const centerLng = Number(req.query.lng) || 15.473;
     const now = Date.now();
+    
+    let currentEvents = eventsCache;
 
-    // Pokud je cache prázdná nebo starší než 5 minut, stáhneme čerstvá data z ŘSD
-    if (now - lastEventsFetch > EVENTS_CACHE_TTL) {
+    // Pokud je cache vypnutá, prázdná nebo starší než 5 minut, stáhneme čerstvá data z ŘSD
+    if (DISABLE_BACKEND_CACHE || eventsCache.length === 0 || now - lastEventsFetch > EVENTS_CACHE_TTL) {
         if (NDIC_API_KEY) {
             try {
                 const apiUrl = 'https://api.dopravniinfo.cz/v1/situations?area=republic';
@@ -118,9 +121,12 @@ app.get('/api/events', async (req, res) => {
                 }).filter(evt => hasValidLngLat(evt.lng, evt.lat));
 
                 if (newEvents.length > 0) {
-                    eventsCache = newEvents;
-                    lastEventsFetch = now;
-                    console.log(`[SYS] Stáhnuto ${eventsCache.length} událostí z api.dopravniinfo.cz.`);
+                    currentEvents = newEvents;
+                    if (!DISABLE_BACKEND_CACHE) {
+                        eventsCache = newEvents;
+                        lastEventsFetch = now;
+                    }
+                    console.log(`[SYS] Stáhnuto ${currentEvents.length} událostí z api.dopravniinfo.cz${DISABLE_BACKEND_CACHE ? ' (bez cache)' : ''}.`);
                 } else {
                     console.log('[WARN] Z api.dopravniinfo.cz se nepodařilo stáhnout žádná data. Zůstává předchozí stav.');
                 }
@@ -139,11 +145,11 @@ app.get('/api/events', async (req, res) => {
         }
     }
 
-    // Odeslat filtrovaná data, pokud máme něco v cache
-    if (eventsCache.length > 0) {
+    // Odeslat filtrovaná data
+    if (currentEvents.length > 0) {
         // Ořízneme odesílaná data pouze na události v okruhu zhruba 50 km od uživatele,
         // abychom do mobilu nepřenášeli tisíce nehod z druhého konce republiky.
-        const localEvents = eventsCache.filter(evt => {
+        const localEvents = currentEvents.filter(evt => {
             return Math.abs(evt.lat - centerLat) < 0.5 && Math.abs(evt.lng - centerLng) < 0.5;
         });
         res.json(localEvents);
@@ -165,8 +171,10 @@ app.get('/api/radars', async (req, res) => {
     const centerLat = Number(req.query.lat) || 49.817;
     const centerLng = Number(req.query.lng) || 15.473;
     const now = Date.now();
+    
+    let currentRadars = radarsCache;
 
-    if (now - lastRadarsFetch > RADARS_CACHE_TTL || radarsCache.length === 0) {
+    if (DISABLE_BACKEND_CACHE || now - lastRadarsFetch > RADARS_CACHE_TTL || radarsCache.length === 0) {
         try {
             // Hledáme jak klasické radary (node), tak úseková měření (často relace nwr)
             const overpassQuery = `[out:json][timeout:120][bbox:48.55,12.09,51.06,18.86];(node["highway"="speed_camera"];nwr["enforcement"="average_speed"];);out center;`;
@@ -186,7 +194,7 @@ app.get('/api/radars', async (req, res) => {
             
             const data = await response.json();
             if (data && data.elements) {
-                radarsCache = data.elements.map(node => {
+                currentRadars = data.elements.map(node => {
                     const tags = node.tags || {};
                     const isAverage = tags['camera:type'] === 'average' || tags['enforcement'] === 'average_speed';
                     return {
@@ -197,8 +205,12 @@ app.get('/api/radars', async (req, res) => {
                         description: isAverage ? 'Úsekové měření' : 'Senzor (Radar)'
                     };
                 }).filter(rad => rad.lat && rad.lng);
-                lastRadarsFetch = now;
-                console.log(`[SYS] Stáhnuto ${radarsCache.length} radarů z OSM.`);
+                
+                if (!DISABLE_BACKEND_CACHE) {
+                    radarsCache = currentRadars;
+                    lastRadarsFetch = now;
+                }
+                console.log(`[SYS] Stáhnuto ${currentRadars.length} radarů z OSM${DISABLE_BACKEND_CACHE ? ' (bez cache)' : ''}.`);
             }
         } catch (err) {
             console.log(`[WARN] Chyba při stahování z OSM Overpass: ${err.message}`);
@@ -206,7 +218,7 @@ app.get('/api/radars', async (req, res) => {
     }
 
     // Odeslat radary v okruhu zhruba 50 km od uživatele
-    const localRadars = radarsCache.filter(rad => {
+    const localRadars = currentRadars.filter(rad => {
         return Math.abs(rad.lat - centerLat) < 0.5 && Math.abs(rad.lng - centerLng) < 0.5;
     });
     res.json(localRadars);
@@ -221,8 +233,10 @@ app.get('/api/pois', async (req, res) => {
     const centerLat = Number(req.query.lat) || 49.817;
     const centerLng = Number(req.query.lng) || 15.473;
     const now = Date.now();
+    
+    let currentPois = poisCache;
 
-    if (now - lastPoisFetch > POIS_CACHE_TTL || poisCache.length === 0) {
+    if (DISABLE_BACKEND_CACHE || now - lastPoisFetch > POIS_CACHE_TTL || poisCache.length === 0) {
         try {
             // Přidáme i nabíjecí stanice (EV) a vytáhneme detaily
             const overpassQuery = `[out:json][timeout:120][bbox:48.55,12.09,51.06,18.86];(nwr["amenity"="fuel"];nwr["amenity"="charging_station"];nwr["amenity"="hospital"];nwr["amenity"="police"];);out center;`;
@@ -255,7 +269,7 @@ app.get('/api/pois', async (req, res) => {
                     console.log(JSON.stringify(data, null, 2));
                     console.log(`[DEBUG] Použitý dotaz: ${overpassQuery}`);
                 }
-                poisCache = data.elements.map(node => {
+                currentPois = data.elements.map(node => {
                     const tags = node.tags || {};
                     const amenity = tags.amenity || 'fuel';
                     let type = 'fuel';
@@ -288,15 +302,19 @@ app.get('/api/pois', async (req, res) => {
                         description: description
                     };
                 }).filter(poi => poi.lat && poi.lng); // Vyřadit cokoli bez GPS pozice
-                lastPoisFetch = now;
-                console.log(`[SYS] Stáhnuto ${poisCache.length} POI z OSM.`);
+                
+                if (!DISABLE_BACKEND_CACHE) {
+                    poisCache = currentPois;
+                    lastPoisFetch = now;
+                }
+                console.log(`[SYS] Stáhnuto ${currentPois.length} POI z OSM${DISABLE_BACKEND_CACHE ? ' (bez cache)' : ''}.`);
             }
         } catch (err) {
             console.log(`[WARN] Chyba při stahování POI z OSM: ${err.message}`);
         }
     }
 
-    const localPois = poisCache.filter(poi => Math.abs(poi.lat - centerLat) < 0.3 && Math.abs(poi.lng - centerLng) < 0.3);
+    const localPois = currentPois.filter(poi => Math.abs(poi.lat - centerLat) < 0.3 && Math.abs(poi.lng - centerLng) < 0.3);
     res.json(localPois);
 });
 

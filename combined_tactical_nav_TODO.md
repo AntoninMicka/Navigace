@@ -110,10 +110,10 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 
 ## 8. PWA a Webová Integrace
 ### Jádro
-- [ ] `manifest.json` s ikonami a `display: standalone`
+- [x] `manifest.json` s ikonami a `display: standalone`
 - [x] Service Worker pro offline podporu a caching
-- [ ] Geolocation API (`navigator.geolocation.watchPosition`) s handlingem ztráty signálu
-- [ ] *Omezení:* Android Auto nepodporuje čisté PWA - nutno počítat s použitím přímo na telefonu/tabletu na palubní desce
+- [x] Geolocation API (`navigator.geolocation.watchPosition`) s handlingem ztráty signálu
+- [ ] *Omezení platformy:* PWA jsou na pozadí uspávány (GPS tracking přestane fungovat). Viz Fáze 5 pro řešení přes Wrapper.
 
 
 ---
@@ -163,7 +163,16 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 
 ---
 
-## 13. Sloučená Roadmapa (MVP)
+## 13. Infrastruktura a Deployment
+- [x] **CI/CD pipeline:** Nastaveny GitHub Actions pro automatické nasazování repozitáře na Google Cloud Run.
+- [ ] **Nasazení na Cloud (Priorita 1):** Hostování Node.js backendu v cloudu (Pro Google Cloud Run nutno zapnout `CPU always allocated` a `Session Affinity` kvůli WebSockets).
+- [ ] **Volitelná backend cache:** Backend je schopen fungovat bez cachování (volitelně povoleno přes ENV proměnné).
+- [ ] Vynucení HTTPS pro běh PWA a přístup ke geolokaci / kompasu.
+
+---
+
+## 14. Sloučená Roadmapa (MVP)
+
 ### Fáze 1 (Základní senzory)
 - [ ] Získávání GPS polohy přes Web API (`watchPosition`)
 - [ ] Databáze radarů v IndexedDB
@@ -184,3 +193,8 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 - [ ] BFT (Blue Force Tracking) – systém skupin (místností) chráněných heslem pro živé sdílení polohy
 - [ ] Skupinový chat
 - [ ] Gamifikace (Achievementy, Reputation)
+
+### Fáze 5 (Android Nativní Wrapper)
+- [ ] Implementace Android Wrapperu (např. Capacitor s pluginem `@capacitor/background-geolocation`).
+- [ ] Běh na pozadí: Udržení WebSockets a sdílení BFT polohy i při zhasnutém displeji.
+- [ ] Integrace nativních oprávnění (Background Location, Draw over other apps pro HUD overlay).

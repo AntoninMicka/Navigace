@@ -1,0 +1,11 @@
+runtime: nodejs20
+env: standard
+
+# Nastavení pro škálování a chování
+instance_class: F1
+
+# Tvé proměnné prostředí
+env_variables:
+  DISABLE_BACKEND_CACHE: "true"
+  # Pokud máš API klíč, odkomentuj řádek níže a doplň ho:
+  # NDIC_API_KEY: "tvuj-api-klic"

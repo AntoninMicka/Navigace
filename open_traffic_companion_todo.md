@@ -16,12 +16,9 @@ která:
 # 1. Rozhodnutí architektury
 
 ## TODO
-- [ ] Rozhodnout:
-  - Android native
-  - Qt/QML Android app
-  - Flutter
-  - PWA
-  - hybrid
+- [x] Rozhodnout:
+  - **Primárně:** Nasazení do cloudu (Node.js) jako Web App / PWA
+  - **Sekundárně (Později):** Nativní Android wrapper (Capacitor/Cordova) nad existujícím webovým jádrem, aby bylo možné udržet běh sledování polohy (BFT) na pozadí při zhasnutém displeji.
 
 - [ ] Rozhodnout:
   - overlay companion app
@@ -141,10 +138,10 @@ která:
 # 9. Android systémové části
 
 ## TODO
-- [ ] foreground service
+- [ ] foreground service (přes Capacitor Background Geolocation plugin)
 - [ ] auto-start after reboot
 - [ ] battery optimization handling
-- [ ] background location
+- [ ] background location persistence
 - [ ] Android Auto research
 
 ---
@@ -179,8 +176,14 @@ která:
 
 # 13. MVP roadmap
 
+## Fáze 0
+- [x] CI/CD: Automatické nasazení z GitHubu přes GitHub Actions
+- [ ] Nasazení backendu do Google Cloud / VPS
+- [ ] Volitelné nastavení backend cache (DISABLE_BACKEND_CACHE=true) a WebSocket persistence (No CPU throttling).
+- [ ] Zabezpečené HTTPS spojení
+
 ## Fáze 1
-- [ ] GPS
+- [x] GPS a kompas (Web API)
 - [ ] radar databáze
 - [ ] audio alerty
 
