@@ -250,6 +250,7 @@ if (socket) {
     
     socket.on('bft_update', (users) => {
         const activeIds = new Set(users.map(u => u.id));
+        let bftListChanged = false;
         
         // Odstranění těch, co se odpojili
         for (let id in bftMarkers) {
@@ -257,6 +258,7 @@ if (socket) {
                 bftMarkers[id].marker.remove();
                 if (bftMarkers[id].overviewMarker) bftMarkers[id].overviewMarker.remove();
                 delete bftMarkers[id];
+                bftListChanged = true;
             }
         }
 
@@ -266,6 +268,7 @@ if (socket) {
 
             if (!bftMarkers[u.id]) {
                 createBftMarker(u);
+                bftListChanged = true;
             } else {
                 bftMarkers[u.id].marker.setLngLat([u.lng, u.lat]);
 
@@ -285,6 +288,7 @@ if (socket) {
             }
         });
         updateDirectionVectors();
+        if (bftListChanged) renderPOIs();
     });
 }
 
@@ -1311,6 +1315,48 @@ function renderPOIs() {
             poiListEl.appendChild(item);
         }
     });
+
+    // Přidání BFT přátel do seznamu cílů
+    if (poiListEl) {
+        Object.values(bftMarkers).forEach(bft => {
+            const u = bft.userData;
+            const item = document.createElement('div');
+            item.style.display = 'flex';
+            item.style.justifyContent = 'space-between';
+            item.style.alignItems = 'center';
+            item.style.background = 'rgba(0, 50, 100, 0.3)'; // Modrý BFT podkres
+            item.style.border = '1px solid #00a6ff';
+            item.style.padding = '6px';
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.innerText = `[BFT] ${(u.id || 'UNK').substring(0, 4).toUpperCase()}`;
+            nameSpan.style.flex = '1';
+            nameSpan.style.overflow = 'hidden';
+            nameSpan.style.textOverflow = 'ellipsis';
+            nameSpan.style.whiteSpace = 'nowrap';
+            nameSpan.style.color = '#00a6ff';
+            
+            const btnBox = document.createElement('div');
+            
+            const navBtn = document.createElement('button');
+            navBtn.innerText = 'NAV';
+            navBtn.style.padding = '3px 6px';
+            navBtn.style.borderColor = '#00a6ff';
+            navBtn.style.color = '#00a6ff';
+            navBtn.onclick = () => {
+                const target = bftMarkers[u.id]?.userData;
+                if (target) {
+                    calculateRoute(target.lng, target.lat);
+                    setMobileScreen('map');
+                }
+            };
+            
+            btnBox.appendChild(navBtn);
+            item.appendChild(nameSpan);
+            item.appendChild(btnBox);
+            poiListEl.appendChild(item);
+        });
+    }
 }
 
 renderPOIs(); // Vykreslit POI při startu aplikace
