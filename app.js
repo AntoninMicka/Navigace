@@ -49,6 +49,8 @@ let currentDestLat = null;
 let currentRouteSteps = []; // Pokyny pro navigaci
 let currentRouteCoords = []; // Souřadnice trasy pro výpočet odchylky
 let offRouteCounter = 0; // Počítadlo pro potvrzení sjetí z trasy
+let availableRoutes = []; // Alternativní trasy
+let activeRouteIndex = 0;
 let destinationMarker = null;
 let routePreviewReady = false;
 const MAX_ROUTE_SNAP_DISTANCE_METERS = 100;
@@ -435,7 +437,7 @@ function getRouteLayerBeforeId() {
 
 function getExternalRouteUrl(startLng, startLat, destLng, destLat, profile = 'driving') {
     const coords = `${startLng},${startLat};${destLng},${destLat}`;
-    const params = 'overview=full&geometries=geojson&steps=true';
+    const params = 'overview=full&geometries=geojson&steps=true&alternatives=true';
     if (profile === 'foot') return `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${coords}?${params}`;
     if (profile === 'bicycle') return `https://routing.openstreetmap.de/routed-bike/route/v1/driving/${coords}?${params}`;
     return `https://router.project-osrm.org/route/v1/driving/${coords}?${params}`;
@@ -699,71 +701,81 @@ async function calculateRoute(destLng, destLat, options = {}) {
         const data = await requestRouteData(startPoint.lng, startPoint.lat, destPoint.lng, destPoint.lat, profile);
         
         if (data.routes && data.routes.length > 0) {
-            const route = data.routes[0];
-            const leg = route.legs && route.legs[0];
-
-            setDestinationMarker(destPoint.lng, destPoint.lat);
-
-                // --- Vytvoření dynamicky obarvené trasy (simulace provozu) ---
-                const routeFeatures = [];
-                if (leg && leg.steps && leg.steps.length > 0) {
-                    leg.steps.forEach(step => {
-                        if (step.geometry && step.geometry.coordinates) {
-                            const speedKmh = step.duration > 0 ? (step.distance / step.duration) * 3.6 : 0;
-                            let segmentColor = '#00ff00'; // Výchozí: Rychlý provoz (Zelená)
-                            
-                            // Přepočet zátěže (Traffic) podle profilu účastníka
-                            if (profile === 'driving') {
-                                if (speedKmh < 30) segmentColor = '#ff3333'; // Zácpa / Velmi pomalý provoz
-                                else if (speedKmh < 60) segmentColor = '#ffcc00'; // Střední provoz / Město
-                            } else if (profile === 'bicycle') {
-                                if (speedKmh < 10) segmentColor = '#ff3333';
-                                else if (speedKmh < 15) segmentColor = '#ffcc00';
-                            } else { // foot
-                                if (speedKmh < 2) segmentColor = '#ff3333';
-                                else if (speedKmh < 4) segmentColor = '#ffcc00';
-                            }
-                            
-                            routeFeatures.push({
-                                type: 'Feature',
-                                properties: { color: segmentColor },
-                                geometry: step.geometry
-                            });
-                        }
-                    });
-                }
-                
-                // Sestavení a vykreslení trasových segmentů
-                const routeGeoJSON = { type: 'FeatureCollection', features: routeFeatures };
-                await renderRoute(routeGeoJSON);
-
+            availableRoutes = data.routes;
+            activeRouteIndex = 0;
+            
             currentDestLng = destPoint.lng;
             currentDestLat = destPoint.lat;
-            currentRouteCoords = route.geometry.coordinates;
             routePreviewReady = true;
             isNavigating = startNavigationAfterRoute;
             isTracking = startNavigationAfterRoute;
-            updateNavigationButtons();
+ 
+            setDestinationMarker(destPoint.lng, destPoint.lat);
             
-            if (leg && leg.steps) {
-                leg.steps.forEach(step => delete step.announced); // Vyčistit staré příznaky
-                currentRouteSteps = leg.steps;
-            } else {
-                currentRouteSteps = [];
-            }
-
-            if (isNavigating) {
-                setTimeout(() => focusCurrentPosition(350), 80);
-                sysLog(`Trasa aktualizována: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min.`);
-            } else {
-                sysLog(`Trasa připravena: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min. Spusť navigaci ručně.`);
-            }
-            updateNavStepsUI(currentLng, currentLat); // Okamžitá aktualizace UI
+            await applySelectedRoute();
+            updateHeaderInfo(startPoint, destPoint); // Zápis MGRS do záhlaví
+            renderAlternativesUI(); // Zobrazení možností v levém panelu
         } else {
             sysLog(`WARN: Trasa nenalezena (${data.code || 'bez odpovědi'}).`);
         }
     } catch (err) {
         sysLog(`ERR: Výpočet trasy selhal (${err.message})`);
+    }
+}
+
+async function applySelectedRoute() {
+    const route = availableRoutes[activeRouteIndex];
+    const leg = route.legs && route.legs[0];
+    const profile = getRoutingProfile();
+
+    currentRouteCoords = route.geometry.coordinates;
+
+    const routeFeatures = [];
+    if (leg && leg.steps && leg.steps.length > 0) {
+        leg.steps.forEach(step => {
+            if (step.geometry && step.geometry.coordinates) {
+                const speedKmh = step.duration > 0 ? (step.distance / step.duration) * 3.6 : 0;
+                let segmentColor = '#00ff00';
+                
+                if (profile === 'driving') {
+                    if (speedKmh < 30) segmentColor = '#ff3333';
+                    else if (speedKmh < 60) segmentColor = '#ffcc00';
+                } else if (profile === 'bicycle') {
+                    if (speedKmh < 10) segmentColor = '#ff3333';
+                    else if (speedKmh < 15) segmentColor = '#ffcc00';
+                } else {
+                    if (speedKmh < 2) segmentColor = '#ff3333';
+                    else if (speedKmh < 4) segmentColor = '#ffcc00';
+                }
+                
+                routeFeatures.push({
+                    type: 'Feature',
+                    properties: { color: segmentColor },
+                    geometry: step.geometry
+                });
+            }
+        });
+    }
+    
+    const routeGeoJSON = { type: 'FeatureCollection', features: routeFeatures };
+    await renderRoute(routeGeoJSON);
+
+    if (leg && leg.steps) {
+        leg.steps.forEach(step => delete step.announced);
+        currentRouteSteps = leg.steps;
+    } else {
+        currentRouteSteps = [];
+    }
+
+    updateNavigationButtons();
+    updateNavStepsUI(currentLng, currentLat);
+    renderElevationProfile(); // Update spodní grafiky
+
+    if (isNavigating) {
+        setTimeout(() => focusCurrentPosition(350), 80);
+        sysLog(`Trasa vybrána: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min.`);
+    } else {
+        sysLog(`Trasa připravena: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min.`);
     }
 }
 
@@ -1618,6 +1630,7 @@ const appContainer = document.getElementById('app-container');
 
 const topLeftContainer = document.createElement('div');
 topLeftContainer.id = 'top-left-ui';
+topLeftContainer.style.marginTop = '50px'; // Posun kvůli záhlaví
 appContainer.insertBefore(topLeftContainer, appContainer.firstChild);
 
 const navStepsEl = document.createElement('div');
@@ -1661,6 +1674,168 @@ hudBtn.addEventListener('click', () => {
         hudBtn.innerText = 'HUD MODE [OFF]';
     }
 });
+
+// --- ZÁHLAVÍ (Header) ---
+const headerEl = document.createElement('div');
+headerEl.id = 'tac-header';
+headerEl.style.cssText = 'position:absolute; top:0; left:0; right:0; height:45px; background:rgba(0,0,0,0.85); color:#0f0; display:flex; justify-content:space-between; align-items:center; padding:0 15px; font-family:monospace; z-index:1000; border-bottom:1px solid rgba(0,255,0,0.3); font-size:12px; pointer-events:none;';
+headerEl.innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:2px;">
+        <div id="header-start">START: N/A</div>
+        <div id="header-dest">CÍL: N/A</div>
+    </div>
+    <div style="text-align:right; border-left:1px solid rgba(0,255,0,0.3); padding-left:15px; display:flex; flex-direction:column; gap:2px;">
+        <div id="header-time" style="font-size:14px; font-weight:bold;">--:--:--</div>
+        <div id="header-date">--.--.----</div>
+    </div>
+`;
+appContainer.insertBefore(headerEl, appContainer.firstChild);
+
+setInterval(() => {
+    const now = new Date();
+    const timeEl = document.getElementById('header-time');
+    const dateEl = document.getElementById('header-date');
+    if (timeEl) timeEl.innerText = now.toLocaleTimeString('cs-CZ');
+    if (dateEl) dateEl.innerText = now.toLocaleDateString('cs-CZ');
+}, 1000);
+
+function updateHeaderInfo(startCoords, destCoords) {
+    if (!startCoords || !destCoords) return;
+    const startStr = formatMGRS(startCoords.lng, startCoords.lat);
+    const destStr = formatMGRS(destCoords.lng, destCoords.lat);
+    document.getElementById('header-start').innerText = `START: ${startStr}`;
+    document.getElementById('header-dest').innerText = `CÍL: ${destStr}`;
+}
+
+// --- VÝŠKOVÝ PROFIL A UDÁLOSTI (Spodní panel) ---
+const profileContainer = document.createElement('div');
+profileContainer.id = 'elevation-profile';
+profileContainer.style.cssText = 'position:absolute; bottom:0; left:0; right:0; height:80px; background:rgba(0,0,0,0.85); border-top:1px solid rgba(0,255,0,0.3); z-index:1000; display:none; padding:5px 10px; pointer-events:none;';
+profileContainer.innerHTML = `
+    <div style="font-size:10px; color:#0f0; margin-bottom:2px; font-family:monospace;">PROFIL TRASY & INTEL</div>
+    <canvas id="elevation-canvas" style="width:100%; height:55px; display:block;"></canvas>
+`;
+appContainer.appendChild(profileContainer);
+
+function renderElevationProfile() {
+    const profileCont = document.getElementById('elevation-profile');
+    const canvas = document.getElementById('elevation-canvas');
+    if (!profileCont || !canvas || !availableRoutes[activeRouteIndex]) {
+        if (profileCont) profileCont.style.display = 'none';
+        return;
+    }
+
+    profileCont.style.display = 'block';
+    const ctx = canvas.getContext('2d');
+    
+    canvas.width = canvas.clientWidth;
+    canvas.height = canvas.clientHeight;
+    const w = canvas.width;
+    const h = canvas.height;
+
+    ctx.clearRect(0, 0, w, h);
+    const route = availableRoutes[activeRouteIndex];
+    const totalDist = route.distance;
+    
+    // Nakreslení "mock" výškového profilu (Generované křivky)
+    // OSRM neposkytuje plná 3D data, nahradíme je vizualizací vln terénu
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    for (let i = 0; i <= w; i += 5) {
+        const progress = i / w;
+        const noise = Math.sin(progress * 10) * 10 + Math.cos(progress * 25) * 5;
+        ctx.lineTo(i, (h / 2) + noise);
+    }
+    ctx.lineTo(w, h);
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.15)';
+    ctx.fill();
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Značky hrozeb a POI na časové ose
+    const allMarkers = [ ...Object.values(eventMarkers), ...Object.values(poiMarkers) ];
+    allMarkers.forEach(m => {
+        if (!m.userData || currentRouteCoords.length === 0) return;
+        
+        let minMeters = Infinity;
+        let totalMetersToPoint = 0;
+        let accDist = 0;
+        
+        for (let i = 0; i < currentRouteCoords.length - 1; i++) {
+            const segLen = new maplibregl.LngLat(currentRouteCoords[i][0], currentRouteCoords[i][1])
+                            .distanceTo(new maplibregl.LngLat(currentRouteCoords[i+1][0], currentRouteCoords[i+1][1]));
+                            
+            const d = distToSegmentInMeters([m.userData.lng, m.userData.lat], currentRouteCoords[i], currentRouteCoords[i+1]);
+            if (d < minMeters) {
+                minMeters = d;
+                totalMetersToPoint = accDist + (segLen / 2);
+            }
+            accDist += segLen;
+        }
+
+        // Pokud je událost poblíž naší naplánované trasy (do 500m okruhu)
+        if (minMeters < 500 && totalDist > 0) {
+            const xPos = (totalMetersToPoint / totalDist) * w;
+            let color = '#0f0';
+            if (['accident', 'closure', 'radar', 'average_camera', 'police'].includes(m.userData.type)) color = '#ff3333';
+            else if (m.userData.type === 'fuel' || m.userData.type === 'medical') color = '#ffcc00';
+
+            ctx.beginPath();
+            ctx.moveTo(xPos, 0);
+            ctx.lineTo(xPos, h);
+            ctx.strokeStyle = color;
+            ctx.setLineDash([2, 2]);
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.beginPath();
+            ctx.arc(xPos, 10, 4, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+        }
+    });
+}
+
+// --- VÝBĚR ALTERNATIVNÍCH TRAS ---
+function renderAlternativesUI() {
+    let altsContainer = document.getElementById('route-alternatives');
+    if (!altsContainer) {
+        altsContainer = document.createElement('div');
+        altsContainer.id = 'route-alternatives';
+        altsContainer.style.cssText = 'background:rgba(0,0,0,0.85); border:1px solid rgba(0,255,0,0.3); padding:10px; margin-top:10px; display:flex; flex-direction:column; gap:8px; pointer-events:auto;';
+        const leftUI = document.getElementById('top-left-ui');
+        if (leftUI) leftUI.appendChild(altsContainer);
+    }
+    
+    if (availableRoutes.length <= 1) {
+        altsContainer.style.display = 'none';
+        return;
+    }
+
+    altsContainer.style.display = 'flex';
+    altsContainer.innerHTML = `<div style="color:#0f0; font-weight:bold; font-size:12px; font-family:monospace;">ALT TRASY:</div>`;
+    
+    availableRoutes.forEach((route, index) => {
+        const dist = (route.distance / 1000).toFixed(1);
+        const eta = Math.round(route.duration / 60);
+        const isSelected = index === activeRouteIndex;
+        
+        const btn = document.createElement('div');
+        btn.style.cssText = `padding:8px; border:1px solid ${isSelected ? '#0f0' : '#555'}; background:${isSelected ? 'rgba(0,255,0,0.15)' : 'transparent'}; cursor:pointer; font-size:12px; font-family:monospace; color:${isSelected ? '#0f0' : '#aaa'};`;
+        
+        let summary = route.legs?.[0]?.summary || `Trasa ${index + 1}`;
+        btn.innerHTML = `<strong>${summary}</strong><br/>Vzdálenost: ${dist} km | Čas: ${eta} min`;
+        
+        btn.onclick = async () => {
+            activeRouteIndex = index;
+            await applySelectedRoute();
+            renderAlternativesUI();
+        };
+        altsContainer.appendChild(btn);
+    });
+}
 
 // --- Service Worker Registrace (Offline podpora & PWA) ---
 if ('serviceWorker' in navigator) {

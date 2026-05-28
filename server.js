@@ -34,7 +34,7 @@ app.get('/api/route', async (req, res) => {
 
     let osrmUrl;
     const coordsStr = `${startLng},${startLat};${destLng},${destLat}`;
-    const params = 'overview=full&geometries=geojson&steps=true';
+    const params = 'overview=full&geometries=geojson&steps=true&alternatives=true';
     if (routeProfile === 'foot') {
         osrmUrl = `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${coordsStr}?${params}`;
     } else if (routeProfile === 'bicycle') {

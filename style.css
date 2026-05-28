@@ -586,6 +586,16 @@ button:disabled {
     border-top: 2px solid #00ff00;
 }
 
+/* Zajištění, aby výškový profil nepřekrýval spodní menu na mobilu */
+#elevation-profile {
+    bottom: 54px !important;
+}
+@media (min-width: 768px) {
+    #elevation-profile {
+        bottom: 0 !important;
+    }
+}
+
 .mobile-tab {
     border-top: none;
     border-bottom: none;
@@ -641,7 +651,7 @@ button:hover {
     #app-container.screen-intel #sidebar {
         display: flex;
         position: absolute;
-        inset: 20px auto 20px 20px; /* Plovoucí panel na levé straně */
+        inset: 55px auto 90px 20px; /* Posunuto pod záhlaví a nad výškový profil */
         width: 280px;
         border: 1px solid #00ff00;
         border-radius: 4px;
@@ -694,7 +704,7 @@ button:hover {
     #overview-map-container {
         display: block;
         position: absolute;
-        inset: 20px 20px auto auto; /* Plovoucí vpravo nahoře */
+        inset: 55px 20px auto auto; /* Posunuto pod záhlaví */
         width: 350px;
         height: 250px;
         border: 1px solid #00ff00;
