@@ -32,6 +32,6 @@
 
 ## Fáze 5: Dynamické prostorové prvky
 
-- [ ] 5.1. Vektor směru (Q): Vykreslení šipky směřující od značky s rotací podle směru pohybu a délkou indikující rychlost.
+- [x] 5.1. Vektor směru (Q): Vykreslení šipky směřující od značky s rotací podle směru pohybu a délkou indikující rychlost.
 
-- [ ] 5.2. Vodící čára k pozici (S, S2): Vykreslení čáry spojující značku s její skutečnou polohou v případě, že je značka kvůli přehlednosti nebo dekonflikci mapy posunuta.
+- [x] 5.2. Vodící čára k pozici (S, S2): Vykreslení čáry spojující značku s její skutečnou polohou v případě, že je značka kvůli přehlednosti nebo dekonflikci mapy posunuta.

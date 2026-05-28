@@ -11,6 +11,7 @@ const map = new maplibregl.Map({
 const userEl = document.createElement('div');
 userEl.className = 'app6-marker app6-marker-self app6-asset-car';
 userEl.innerHTML = `
+    <div class="app6-direction-vector" id="self-dir-vector" style="display: none;"></div>
     <div class="app6-symbol" aria-label="Friendly self equipment">
         <div class="app6-frame app6-equipment-frame">
             <div class="app6-asset-icon"></div>
@@ -37,6 +38,7 @@ let isFirstLocation = true;
 let currentLng = null;
 let currentLat = null;
 let hasLocation = false;
+let currentSpeedKmh = 0;
 let watchId = null;
 
 // Navigační stavové proměnné
@@ -164,6 +166,7 @@ if (socket) {
                 bftMarkers[u.id].el.querySelector('.app6-amp-z').innerText = `${u.speed || 0} km/h`;
                 bftMarkers[u.id].el.querySelector('.app6-amp-h').innerText = `HDG ${u.heading || '--'}`;
                 
+                bftMarkers[u.id].userData = u;
                 const currentClass = Array.from(bftMarkers[u.id].el.classList).find(c => c.startsWith('app6-asset-'));
                 const newClass = `app6-asset-${u.assetType || 'car'}`;
                 if (currentClass !== newClass) {
@@ -172,6 +175,7 @@ if (socket) {
                 }
             }
         });
+        updateDirectionVectors();
     });
 }
 
@@ -262,6 +266,41 @@ window.addEventListener('deviceorientation', (event) => {
         handleCompassHeading(360 - event.alpha, 'orientation');
     }
 }, true);
+
+// --- Vektor směru (Q) - Aktualizace UI ---
+function updateDirectionVectors() {
+    const mapBearing = map.getBearing();
+
+    // Aktualizace vlastní značky
+    const selfVector = document.getElementById('self-dir-vector');
+    if (selfVector && activeHeading !== null && currentSpeedKmh > 2) {
+        const rot = activeHeading - mapBearing;
+        const h = Math.min(currentSpeedKmh * 1.5, 150); // Max délka 150px (odpovídá 100 km/h)
+        selfVector.style.height = `${h}px`;
+        selfVector.style.transform = `rotate(${rot}deg)`;
+        selfVector.style.display = 'block';
+    } else if (selfVector) {
+        selfVector.style.display = 'none';
+    }
+
+    // Aktualizace BFT značek přátel
+    Object.values(bftMarkers).forEach(bft => {
+        const vec = bft.el.querySelector('.app6-direction-vector');
+        const u = bft.userData;
+        if (vec && u && u.heading !== null && u.heading !== '--' && u.speed > 2) {
+            const rot = parseFloat(u.heading) - mapBearing;
+            const h = Math.min(parseFloat(u.speed) * 1.5, 150);
+            vec.style.height = `${h}px`;
+            vec.style.transform = `rotate(${rot}deg)`;
+            vec.style.display = 'block';
+        } else if (vec) {
+            vec.style.display = 'none';
+        }
+    });
+}
+
+// Přepočítat vektory, pokud uživatel mapou ručně otáčí
+map.on('rotate', updateDirectionVectors);
 
 // Pomocné matematické funkce pro výpočet vzdálenosti bodu od úsečky (pro detekci sjetí z trasy)
 function sqr(x) { return x * x; }
@@ -643,6 +682,7 @@ function handlePositionSuccess(position) {
     }
 
     const displayHeading = activeHeading !== null ? activeHeading.toFixed(0) : '--';
+    currentSpeedKmh = speedKmh;
 
     // Odeslání polohy na BFT server
     if (socket) {
@@ -699,6 +739,8 @@ function handlePositionSuccess(position) {
     if (heading !== null) {
         setActiveHeading(heading, true);
     }
+
+    updateDirectionVectors();
     
     // --- Kontrola sjetí z trasy (Off-route detection) ---
     if (isNavigating && currentRouteCoords.length > 0) {
@@ -834,6 +876,7 @@ function createBftMarker(u) {
     const el = document.createElement('div');
     el.className = `app6-marker app6-asset-${u.assetType || 'car'}`;
     el.innerHTML = `
+        <div class="app6-direction-vector" style="display: none;"></div>
         <div class="app6-symbol">
             <div class="app6-frame app6-equipment-frame">
                 <div class="app6-asset-icon"></div>
@@ -851,7 +894,7 @@ function createBftMarker(u) {
     `;
     
     const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([u.lng, u.lat]).addTo(map);
-    bftMarkers[u.id] = { marker, el };
+    bftMarkers[u.id] = { marker, el, userData: u };
 }
 
 // Centrování mapy (Tlačítko CENTER)
@@ -957,6 +1000,33 @@ renderPOIs(); // Vykreslit POI při startu aplikace
 // --- Dopravní události (Events / Incidents) ---
 const eventMarkers = {};
 
+function getMarkerOffsetAndLeaderLine(lng, lat) {
+    let overlapCount = 0;
+    // Detekce kolizí s již umístěnými značkami v okruhu 100 metrů
+    Object.values(eventMarkers).forEach(m => {
+        if (new maplibregl.LngLat(lng, lat).distanceTo(m.marker.getLngLat()) < 100) {
+            overlapCount++;
+        }
+    });
+
+    let dx = 0, dy = 0, leaderLineSVG = '';
+    if (overlapCount > 0) {
+        // Rozmístění překrývajících se značek do vějíře (krok po 45 stupních)
+        const angle = (overlapCount * Math.PI / 4) - (Math.PI / 4);
+        const distPx = 45 + Math.floor(overlapCount / 8) * 15; // Zvětšení poloměru při mnoha kolizích
+        dx = Math.round(distPx * Math.cos(angle));
+        dy = Math.round(distPx * Math.sin(angle));
+        
+        leaderLineSVG = `
+            <svg width="0" height="0" style="position: absolute; overflow: visible; pointer-events: none; z-index: -1; left: 0; top: 0;">
+                <line x1="0" y1="0" x2="${-dx}" y2="${-dy}" stroke="#ff3333" stroke-width="1.5" stroke-dasharray="4,3"/>
+                <circle cx="${-dx}" cy="${-dy}" r="2.5" fill="#ff3333" />
+            </svg>
+        `;
+    }
+    return { offset: [dx, dy], leaderLineSVG };
+}
+
 async function fetchAndRenderEvents() {
     try {
         const queryParams = (currentLng !== null && currentLat !== null) ? `?lng=${currentLng}&lat=${currentLat}` : '';
@@ -967,6 +1037,10 @@ async function fetchAndRenderEvents() {
         events.forEach(evt => {
             if (!eventMarkers[evt.id]) {
                 newEventsCount++;
+                
+                // Výpočet případného posunu a vodící čáry
+                const { offset, leaderLineSVG } = getMarkerOffsetAndLeaderLine(evt.lng, evt.lat);
+                
                 const el = document.createElement('div');
                 el.id = `evt-${evt.id}`;
                 
@@ -976,6 +1050,7 @@ async function fetchAndRenderEvents() {
 
                 el.className = `app6-marker app6-hazard`;
                 el.innerHTML = `
+                    ${leaderLineSVG}
                     <div class="app6-symbol">
                         <div class="app6-frame app6-hazard-frame">
                             <div class="app6-asset-icon">${iconText}</div>
@@ -989,7 +1064,7 @@ async function fetchAndRenderEvents() {
                     </div>
                 `;
                 
-                const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+                const marker = new maplibregl.Marker({ element: el, anchor: 'center', offset })
                     .setLngLat([evt.lng, evt.lat])
                     .addTo(map);
                 
@@ -1016,12 +1091,17 @@ async function fetchAndRenderRadars() {
         radars.forEach(rad => {
             if (!eventMarkers[rad.id]) {
                 newCount++;
+                
+                // Výpočet případného posunu a vodící čáry
+                const { offset, leaderLineSVG } = getMarkerOffsetAndLeaderLine(rad.lng, rad.lat);
+                
                 const el = document.createElement('div');
                 el.id = `evt-${rad.id}`;
                 
                 // Využijeme existující CSS třídu app6-hazard (červený kosočtverec)
                 el.className = `app6-marker app6-hazard`;
                 el.innerHTML = `
+                    ${leaderLineSVG}
                     <div class="app6-symbol">
                         <div class="app6-frame app6-hazard-frame">
                             <div class="app6-asset-icon">SNS</div>
@@ -1035,7 +1115,7 @@ async function fetchAndRenderRadars() {
                     </div>
                 `;
                 
-                const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+                const marker = new maplibregl.Marker({ element: el, anchor: 'center', offset })
                     .setLngLat([rad.lng, rad.lat])
                     .addTo(map);
                 

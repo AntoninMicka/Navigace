@@ -131,6 +131,30 @@ body, html {
     pointer-events: auto;
 }
 
+/* Vektor směru pohybu (Q) */
+.app6-direction-vector {
+    position: absolute;
+    left: -1px; /* Vycentrování 2px čáry na střed značky */
+    bottom: 0;
+    width: 2px;
+    height: 0px;
+    background: rgba(0, 166, 255, 0.8);
+    transform-origin: bottom center;
+    transform: rotate(0deg);
+    pointer-events: none;
+}
+
+.app6-direction-vector::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 6px solid rgba(0, 166, 255, 0.8);
+    transform: translate(-50%, -100%);
+}
+
 .app6-amp-left {
     right: 28px;
     align-items: flex-end;
