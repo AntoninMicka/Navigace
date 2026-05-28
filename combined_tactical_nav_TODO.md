@@ -19,7 +19,7 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 
 ### Backend (PWA + Realtime Server)
 - [x] **Frontend Jádro:** Statický hosting (Vercel, GitHub Pages) pro rychlé načtení PWA
-- [ ] **Úložiště:** Klientské `IndexedDB` a `Cache API` pro offline radary a mapové dlaždice
+- [x] **Úložiště:** Klientské `IndexedDB` a `Cache API` pro offline radary a mapové dlaždice
 - [ ] **Realtime sync (BFT & Eventy):** Lehký Node.js (WebSockets/Socket.io) nebo MQTT broker (např. Mosquitto) pro Blue Force Tracking (trakování přátel) a crowdsourcing událostí
 
 ---
@@ -67,7 +67,7 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 - [x] Geocoding (vyhledávání adres) a preview mód
 - [x] Lokální ukládání bodů zájmu (POI)
 - [ ] Dynamické přesměrování (hlášení: *"Primary route compromised"*)
-- [ ] Podpora offline mapových podkladů (cachování vektorových dlaždic přes Service Worker)
+- [x] Podpora offline mapových podkladů (cachování vektorových dlaždic přes Service Worker)
 
 ### Lokalizace a Filtrování Eventů
 - [x] GPS tracking & detekce směru (zlepšení přesnosti pomocí magnetometru/kompasu)
@@ -111,7 +111,7 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 ## 8. PWA a Webová Integrace
 ### Jádro
 - [ ] `manifest.json` s ikonami a `display: standalone`
-- [ ] Service Worker pro offline podporu a caching
+- [x] Service Worker pro offline podporu a caching
 - [ ] Geolocation API (`navigator.geolocation.watchPosition`) s handlingem ztráty signálu
 - [ ] *Omezení:* Android Auto nepodporuje čisté PWA - nutno počítat s použitím přímo na telefonu/tabletu na palubní desce
 

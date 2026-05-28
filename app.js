@@ -1506,3 +1506,15 @@ hudBtn.addEventListener('click', () => {
         hudBtn.innerText = 'HUD MODE [OFF]';
     }
 });
+
+// --- Service Worker Registrace (Offline podpora & PWA) ---
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+                sysLog(`SYS: Service Worker aktivní. Mapy se cachují pro offline režim.`);
+            }).catch(err => {
+                sysLog(`ERR: Service Worker selhal (${err.message})`);
+            });
+    });
+}
