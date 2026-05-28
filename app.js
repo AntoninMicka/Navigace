@@ -94,8 +94,16 @@ function sysLog(msg, options = {}) {
     p.innerText = `[SYS] ${msg}`;
     log.prepend(p);
 
-    // Omezit logy zobrazené na mapě na maximálně posledních 5 zpráv
-    while (log.children.length > 5) {
+    // Plynulé zmizení logu po 10 vteřinách
+    setTimeout(() => {
+        if (log.contains(p)) {
+            p.style.opacity = '0';
+            p.style.transition = 'opacity 1s ease-out';
+            setTimeout(() => { if (log.contains(p)) log.removeChild(p); }, 1000);
+        }
+    }, 10000);
+
+    while (log.children.length > 6) {
         log.removeChild(log.lastChild);
     }
 
@@ -1068,7 +1076,7 @@ async function fetchAndRenderEvents() {
                     .setLngLat([evt.lng, evt.lat])
                     .addTo(map);
                 
-                eventMarkers[evt.id] = { marker, el };
+                eventMarkers[evt.id] = { marker, el, userData: evt };
             }
         });
         
@@ -1119,7 +1127,7 @@ async function fetchAndRenderRadars() {
                     .setLngLat([rad.lng, rad.lat])
                     .addTo(map);
                 
-                eventMarkers[rad.id] = { marker, el };
+                eventMarkers[rad.id] = { marker, el, userData: rad };
             }
         });
         
@@ -1131,12 +1139,53 @@ async function fetchAndRenderRadars() {
     }
 }
 
+// --- Týlové body (POI - Čerpací stanice) ---
+const poiMarkers = {};
+async function fetchAndRenderPOIs() {
+    try {
+        const queryParams = (currentLng !== null && currentLat !== null) ? `?lng=${currentLng}&lat=${currentLat}` : '';
+        const response = await fetch(`/api/pois${queryParams}`);
+        const pois = await response.json();
+
+        pois.forEach(poi => {
+            if (!poiMarkers[poi.id]) {
+                const el = document.createElement('div');
+                el.id = `poi-${poi.id}`;
+                el.className = `app6-marker app6-neutral`;
+                el.innerHTML = `
+                    <div class="app6-symbol">
+                        <div class="app6-neutral-frame">
+                            <div class="app6-asset-icon">LOG</div>
+                        </div>
+                    </div>
+                    <div class="app6-amplifiers">
+                        <div class="app6-amp-right">
+                            <div class="app6-amp-t">LOG</div>
+                            <div class="app6-amp-h">${poi.description}</div>
+                        </div>
+                    </div>
+                `;
+                const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+                    .setLngLat([poi.lng, poi.lat])
+                    .addTo(map);
+                
+                poiMarkers[poi.id] = { marker, el, userData: poi };
+            }
+        });
+    } catch (err) {
+        sysLog(`ERR: Stažení týlových bodů selhalo.`);
+    }
+}
+
 // Stáhnout události chvíli po startu
 setTimeout(fetchAndRenderEvents, 2000);
 setInterval(fetchAndRenderEvents, 60000); // Aktualizace každou minutu
 
 setTimeout(fetchAndRenderRadars, 3000);
 setInterval(fetchAndRenderRadars, 60000 * 5); // Radary stačí aktualizovat jen občas (5 minut)
+
+setTimeout(fetchAndRenderPOIs, 4000);
+setInterval(fetchAndRenderPOIs, 60000 * 10);
 
 // --- Audio Engine (TTS a Beepy) ---
 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -1256,6 +1305,42 @@ function updateNavStepsUI(lng, lat) {
         totalRemainingDist += step.distance;
         totalRemainingDur += step.duration;
     }
+
+    // Integrace značek hrozeb a POI přímo do itineráře manévrů
+    const allMarkers = [ ...Object.values(eventMarkers), ...Object.values(poiMarkers) ];
+    allMarkers.forEach(m => {
+        if (!m.userData) return;
+        const dist = (lng && lat) ? new maplibregl.LngLat(lng, lat).distanceTo(m.marker.getLngLat()) : 999999;
+        
+        // Ukaž značky mezi 100 metry a 5 km, pokud jsou před námi
+        if (dist > 100 && dist < 5000) {
+            let isAhead = true;
+            if (lng !== null && lat !== null && activeHeading !== null) {
+                const dx = m.marker.getLngLat().lng - lng;
+                const dy = m.marker.getLngLat().lat - lat;
+                let angleDeg = Math.atan2(dx, dy) * (180 / Math.PI);
+                if (angleDeg < 0) angleDeg += 360;
+                isAhead = headingDelta(activeHeading, angleDeg) < 80; // V zorném poli 160 stupňů před námi
+            }
+
+            if (isAhead) {
+                let iconText = 'UNK';
+                if (m.userData.type === 'accident') iconText = 'HAZ';
+                else if (m.userData.type === 'closure') iconText = 'OBS';
+                else if (m.userData.type === 'radar') iconText = 'SNS';
+                else if (m.userData.type === 'fuel') iconText = 'LOG';
+
+                upcomingSteps.push({
+                    distance: dist,
+                    instruction: m.userData.description,
+                    icon: iconText
+                });
+            }
+        }
+    });
+
+    // Seřadit vše chronologicky podle vzdálenosti
+    upcomingSteps.sort((a, b) => a.distance - b.distance);
 
     if (overviewInfoEl && upcomingSteps.length > 0) {
         const activeStep = currentRouteSteps.find(s => !s.passed);

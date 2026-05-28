@@ -55,7 +55,7 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 | Zácpa / Kolona | Mobility collapse / Denied area | Mobility denied |
 | Nehoda | Disabled vehicle | Hazard marker |
 | Uzavírka | Route denial | Obstruction |
-| Čerpací stanice | Refuel point / Logistics | Logistics point |
+- [x] Čerpací stanice | Refuel point / Logistics | Logistics point |
 
 *Poznámka: Spřátelené jednotky (přátelé) budou na mapě trakovány v reálném čase prostřednictvím modulu BFT (Blue Force Tracking).*
 

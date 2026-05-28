@@ -203,6 +203,43 @@ app.get('/api/radars', async (req, res) => {
     res.json(localRadars);
 });
 
+// --- Cache pro POI / Čerpací stanice (OpenStreetMap Overpass API) ---
+let poisCache = [];
+let lastPoisFetch = 0;
+const POIS_CACHE_TTL = 24 * 60 * 60 * 1000; // Platnost cache: 24 hodin
+
+app.get('/api/pois', async (req, res) => {
+    const centerLat = Number(req.query.lat) || 49.817;
+    const centerLng = Number(req.query.lng) || 15.473;
+    const now = Date.now();
+
+    if (now - lastPoisFetch > POIS_CACHE_TTL || poisCache.length === 0) {
+        try {
+            const overpassQuery = `[out:json][timeout:25];node["amenity"="fuel"];out;`;
+            const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
+            const response = await fetch(overpassUrl, { headers: { 'User-Agent': 'TacticalNav/1.0 (Node.js backend)' } });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            if (data && data.elements) {
+                poisCache = data.elements.map(node => ({
+                    id: `osm-poi-${node.id}`,
+                    type: 'fuel',
+                    lat: node.lat,
+                    lng: node.lon,
+                    description: 'Týl (Palivo)'
+                }));
+                lastPoisFetch = now;
+                console.log(`[SYS] Stáhnuto ${poisCache.length} POI z OSM.`);
+            }
+        } catch (err) {
+            console.log(`[WARN] Chyba při stahování POI z OSM: ${err.message}`);
+        }
+    }
+
+    const localPois = poisCache.filter(poi => Math.abs(poi.lat - centerLat) < 0.3 && Math.abs(poi.lng - centerLng) < 0.3);
+    res.json(localPois);
+});
+
 // Fallback pro SPA / PWA - všechny neznámé routy pošlou index.html
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
