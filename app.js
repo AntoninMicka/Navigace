@@ -1183,6 +1183,8 @@ document.getElementById('search-input').addEventListener('keydown', (e) => {
 });
 
 // --- Lokální ukládání bodů zájmu (POI) ---
+let customPoiMarkers = []; // Pole pro udržení a čištění značek v mapě
+
 map.on('contextmenu', (e) => {
     const name = prompt("Zadejte taktické označení cíle (POI):", "Cíl");
     if (name) {
@@ -1195,15 +1197,75 @@ map.on('contextmenu', (e) => {
 });
 
 function renderPOIs() {
+    // Vyčištění starých značek z mapy, aby se nehromadily a neprolínally
+    customPoiMarkers.forEach(m => m.remove());
+    customPoiMarkers = [];
+
+    const poiListEl = document.getElementById('poi-list');
+    if (poiListEl) poiListEl.innerHTML = '';
+
     const pois = JSON.parse(localStorage.getItem('tacnav_pois') || '[]');
-    pois.forEach(poi => {
+    pois.forEach((poi, index) => {
+        // 1. Vykreslení do Mapy
         const el = document.createElement('div');
         el.style.width = '12px'; el.style.height = '12px';
         el.style.backgroundColor = '#ffcc00'; el.style.borderRadius = '50%';
         el.style.border = '1px solid #000'; el.title = poi.name;
         
         el.addEventListener('click', (e) => { e.stopPropagation(); calculateRoute(poi.lng, poi.lat); setMobileScreen('map'); });
-        new maplibregl.Marker({ element: el }).setLngLat([poi.lng, poi.lat]).addTo(map);
+        const marker = new maplibregl.Marker({ element: el }).setLngLat([poi.lng, poi.lat]).addTo(map);
+        customPoiMarkers.push(marker);
+
+        // 2. Vykreslení do Seznamu (Levý panel)
+        if (poiListEl) {
+            const item = document.createElement('div');
+            item.style.display = 'flex';
+            item.style.justifyContent = 'space-between';
+            item.style.alignItems = 'center';
+            item.style.background = 'rgba(0, 50, 0, 0.3)';
+            item.style.border = '1px solid #00ff00';
+            item.style.padding = '6px';
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.innerText = poi.name;
+            nameSpan.style.flex = '1';
+            nameSpan.style.overflow = 'hidden';
+            nameSpan.style.textOverflow = 'ellipsis';
+            nameSpan.style.whiteSpace = 'nowrap';
+            nameSpan.style.color = '#ffcc00';
+            
+            const btnBox = document.createElement('div');
+            btnBox.style.display = 'flex';
+            btnBox.style.gap = '5px';
+            
+            const navBtn = document.createElement('button');
+            navBtn.innerText = 'NAV';
+            navBtn.style.padding = '3px 6px';
+            navBtn.onclick = () => {
+                calculateRoute(poi.lng, poi.lat);
+                setMobileScreen('map');
+            };
+            
+            const delBtn = document.createElement('button');
+            delBtn.innerText = 'X';
+            delBtn.style.padding = '3px 8px';
+            delBtn.style.borderColor = '#ff3333';
+            delBtn.style.color = '#ff3333';
+            delBtn.onclick = () => {
+                if (confirm(`Smazat cíl: ${poi.name}?`)) {
+                    pois.splice(index, 1);
+                    localStorage.setItem('tacnav_pois', JSON.stringify(pois));
+                    renderPOIs();
+                }
+            };
+            
+            btnBox.appendChild(navBtn);
+            btnBox.appendChild(delBtn);
+            
+            item.appendChild(nameSpan);
+            item.appendChild(btnBox);
+            poiListEl.appendChild(item);
+        }
     });
 }
 
@@ -1211,6 +1273,25 @@ renderPOIs(); // Vykreslit POI při startu aplikace
 
 // --- Dopravní události (Events / Incidents) ---
 const eventMarkers = {};
+
+// Záchyt tlačítka pro uložení aktuální polohy
+const btnAddPoi = document.getElementById('btn-add-poi');
+if (btnAddPoi) {
+    btnAddPoi.addEventListener('click', () => {
+        if (!hasLocation || currentLng === null || currentLat === null) {
+            sysLog('WARN: Nelze uložit POI, GPS poloha zatím není známa.');
+            return;
+        }
+        const name = prompt("Zadejte název pro aktuální polohu:", "Moje pozice");
+        if (name) {
+            const pois = JSON.parse(localStorage.getItem('tacnav_pois') || '[]');
+            pois.push({ name, lng: currentLng, lat: currentLat });
+            localStorage.setItem('tacnav_pois', JSON.stringify(pois));
+            sysLog(`POI uloženo: ${name}`);
+            renderPOIs();
+        }
+    });
+}
 
 function getMarkerOffsetAndLeaderLine(lng, lat) {
     let overlapCount = 0;
