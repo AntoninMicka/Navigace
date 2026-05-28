@@ -23,6 +23,6 @@ Tento dokument popisuje kroky k vytvoření dual-map layoutu pro desktop/tablet,
 - [x] **Kamera přehledové mapy (Během jízdy):** Volitelně aktualizovat střed mapy podle polohy uživatele, ale zachovat oddálený zoom (~10-12), nebo ji nechat staticky na celkové trase.
 
 ## Fáze 5: Uživatelské rozhraní a HUD pro overview
-- [ ] **Přehledový panel:** Do rohu přehledové mapy přidat informační widget s celkovými daty (Zbývající vzdálenost, celková ETA do cíle).
+- [x] **Přehledový panel:** Do rohu přehledové mapy přidat informační widget s celkovými daty (Zbývající vzdálenost, celková ETA do cíle).
 - [ ] **Zvýraznění rizik:** Na přehledové mapě vykreslit okolo hrozeb na trase (nehody, zácpy) výraznější indikátory (např. červené zóny), které na oddálené mapě nezapadnou.
 - [ ] **Performance optimalizace:** Zajistit, aby se nevykreslovaly zbytečně detailní textové labely (`app6-amplifiers`) na přehledové mapě, pokud je příliš oddálená, čímž se ušetří výkon.

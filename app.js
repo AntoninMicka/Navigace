@@ -17,9 +17,13 @@ userEl.innerHTML = `
         </div>
     </div>
     <div class="app6-amplifiers">
-        <div class="app6-amp-t">SELF</div>
-        <div class="app6-amp-z" id="self-amp-z">-- km/h</div>
-        <div class="app6-amp-h" id="self-amp-h">HDG --</div>
+        <div class="app6-amp-left">
+            <div class="app6-amp-z" id="self-amp-z">-- km/h</div>
+        </div>
+        <div class="app6-amp-right">
+            <div class="app6-amp-t">SELF</div>
+            <div class="app6-amp-h" id="self-amp-h">HDG --</div>
+        </div>
     </div>
 `;
 
@@ -156,16 +160,6 @@ if (socket) {
                 createBftMarker(u);
             } else {
                 bftMarkers[u.id].marker.setLngLat([u.lng, u.lat]);
-                
-                if (bftMarkers[u.id].overviewMarker) {
-                    bftMarkers[u.id].overviewMarker.setLngLat([u.lng, u.lat]);
-                    const currentClass = Array.from(bftMarkers[u.id].overviewEl.classList).find(c => c.startsWith('app6-asset-'));
-                    const newClass = `app6-asset-${u.assetType || 'car'}`;
-                    if (currentClass !== newClass) {
-                        if (currentClass) bftMarkers[u.id].overviewEl.classList.remove(currentClass);
-                        bftMarkers[u.id].overviewEl.classList.add(newClass);
-                    }
-                }
 
                 bftMarkers[u.id].el.querySelector('.app6-amp-z').innerText = `${u.speed || 0} km/h`;
                 bftMarkers[u.id].el.querySelector('.app6-amp-h').innerText = `HDG ${u.heading || '--'}`;
@@ -493,49 +487,47 @@ function stopNavigation() {
     sysLog(routePreviewReady ? 'Navigace zastavena, trasa zůstává v preview.' : 'Navigace zastavena.', { speak: true });
 }
 
-async function renderRoute(routeGeometry) {
+async function renderRoute(routeGeoJSON) {
     await waitForMapStyle();
 
-    if (!routeGeometry || routeGeometry.type !== 'LineString' || !Array.isArray(routeGeometry.coordinates)) {
-        throw new Error('Neplatná geometrie trasy');
+    if (!routeGeoJSON || routeGeoJSON.type !== 'FeatureCollection') {
+        throw new Error('Neplatná data trasy');
     }
-
-    const geojson = { type: 'Feature', properties: {}, geometry: routeGeometry };
 
     if (map.getSource('route')) {
-        map.getSource('route').setData(geojson);
-        return;
-    }
-
-    map.addSource('route', { type: 'geojson', data: geojson });
-
-    const routeLayer = {
-        id: 'route',
-        type: 'line',
-        source: 'route',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#00ff00', 'line-width': 5, 'line-opacity': 0.75 }
-    };
-    const beforeId = getRouteLayerBeforeId();
-
-    if (beforeId) {
-        map.addLayer(routeLayer, beforeId);
+        map.getSource('route').setData(routeGeoJSON);
     } else {
-        map.addLayer(routeLayer);
+        map.addSource('route', { type: 'geojson', data: routeGeoJSON });
+
+        const routeLayer = {
+            id: 'route',
+            type: 'line',
+            source: 'route',
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            // Použití dynamické barvy z properties každého segmentu trasy
+            paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-opacity': 0.75 }
+        };
+        const beforeId = getRouteLayerBeforeId();
+
+        if (beforeId) {
+            map.addLayer(routeLayer, beforeId);
+        } else {
+            map.addLayer(routeLayer);
+        }
     }
 
     // Přidání trasy i na přehledovou mapu
     if (overviewMap && overviewMap.isStyleLoaded()) {
         if (overviewMap.getSource('route')) {
-            overviewMap.getSource('route').setData(geojson);
+            overviewMap.getSource('route').setData(routeGeoJSON);
         } else {
-            overviewMap.addSource('route', { type: 'geojson', data: geojson });
+            overviewMap.addSource('route', { type: 'geojson', data: routeGeoJSON });
             overviewMap.addLayer({
                 id: 'route',
                 type: 'line',
                 source: 'route',
                 layout: { 'line-join': 'round', 'line-cap': 'round' },
-                paint: { 'line-color': '#00ff00', 'line-width': 3, 'line-opacity': 0.75 }
+                paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.75 }
             });
         }
     }
@@ -562,7 +554,39 @@ async function calculateRoute(destLng, destLat, options = {}) {
             const leg = route.legs && route.legs[0];
 
             setDestinationMarker(destPoint.lng, destPoint.lat);
-            await renderRoute(route.geometry);
+
+                // --- Vytvoření dynamicky obarvené trasy (simulace provozu) ---
+                const routeFeatures = [];
+                if (leg && leg.steps && leg.steps.length > 0) {
+                    leg.steps.forEach(step => {
+                        if (step.geometry && step.geometry.coordinates) {
+                            const speedKmh = step.duration > 0 ? (step.distance / step.duration) * 3.6 : 0;
+                            let segmentColor = '#00ff00'; // Výchozí: Rychlý provoz (Zelená)
+                            
+                            // Přepočet zátěže (Traffic) podle profilu účastníka
+                            if (profile === 'driving') {
+                                if (speedKmh < 30) segmentColor = '#ff3333'; // Zácpa / Velmi pomalý provoz
+                                else if (speedKmh < 60) segmentColor = '#ffcc00'; // Střední provoz / Město
+                            } else if (profile === 'bicycle') {
+                                if (speedKmh < 10) segmentColor = '#ff3333';
+                                else if (speedKmh < 15) segmentColor = '#ffcc00';
+                            } else { // foot
+                                if (speedKmh < 2) segmentColor = '#ff3333';
+                                else if (speedKmh < 4) segmentColor = '#ffcc00';
+                            }
+                            
+                            routeFeatures.push({
+                                type: 'Feature',
+                                properties: { color: segmentColor },
+                                geometry: step.geometry
+                            });
+                        }
+                    });
+                }
+                
+                // Sestavení a vykreslení trasových segmentů
+                const routeGeoJSON = { type: 'FeatureCollection', features: routeFeatures };
+                await renderRoute(routeGeoJSON);
 
             currentDestLng = destPoint.lng;
             currentDestLat = destPoint.lat;
@@ -585,6 +609,7 @@ async function calculateRoute(destLng, destLat, options = {}) {
             } else {
                 sysLog(`Trasa připravena: ${(route.distance / 1000).toFixed(1)} km, ETA: ${Math.round(route.duration / 60)} min. Spusť navigaci ručně.`);
             }
+            updateNavStepsUI(currentLng, currentLat); // Okamžitá aktualizace UI
         } else {
             sysLog(`WARN: Trasa nenalezena (${data.code || 'bez odpovědi'}).`);
         }
@@ -815,29 +840,18 @@ function createBftMarker(u) {
             </div>
         </div>
         <div class="app6-amplifiers">
-            <div class="app6-amp-t">${(u.id || 'BFT').substring(0, 4).toUpperCase()}</div>
-            <div class="app6-amp-z">${u.speed || 0} km/h</div>
-            <div class="app6-amp-h">HDG ${u.heading || '--'}</div>
+            <div class="app6-amp-left">
+                <div class="app6-amp-z">${u.speed || 0} km/h</div>
+            </div>
+            <div class="app6-amp-right">
+                <div class="app6-amp-t">${(u.id || 'BFT').substring(0, 4).toUpperCase()}</div>
+                <div class="app6-amp-h">HDG ${u.heading || '--'}</div>
+            </div>
         </div>
     `;
     
     const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([u.lng, u.lat]).addTo(map);
-    
-    let overviewMarker = null;
-    let overviewEl = null;
-    if (overviewMap) {
-        overviewEl = document.createElement('div');
-        overviewEl.className = `app6-marker app6-asset-${u.assetType || 'car'}`;
-        overviewEl.innerHTML = `
-            <div class="app6-symbol" style="transform: scale(0.6); transform-origin: top left;">
-                <div class="app6-frame app6-equipment-frame">
-                    <div class="app6-asset-icon"></div>
-                </div>
-            </div>
-        `;
-        overviewMarker = new maplibregl.Marker({ element: overviewEl, anchor: 'center' }).setLngLat([u.lng, u.lat]).addTo(overviewMap);
-    }
-    bftMarkers[u.id] = { marker, el, overviewMarker, overviewEl };
+    bftMarkers[u.id] = { marker, el };
 }
 
 // Centrování mapy (Tlačítko CENTER)
@@ -968,7 +982,10 @@ async function fetchAndRenderEvents() {
                         </div>
                     </div>
                     <div class="app6-amplifiers">
-                        <div class="app6-amp-h">${evt.description}</div>
+                        <div class="app6-amp-right">
+                            <div class="app6-amp-t">${iconText}</div>
+                            <div class="app6-amp-h">${evt.description}</div>
+                        </div>
                     </div>
                 `;
                 
@@ -976,21 +993,7 @@ async function fetchAndRenderEvents() {
                     .setLngLat([evt.lng, evt.lat])
                     .addTo(map);
                 
-                let overviewMarker = null;
-                if (overviewMap) {
-                    const overviewEl = document.createElement('div');
-                    overviewEl.className = `app6-marker app6-hazard`;
-                    overviewEl.innerHTML = `
-                        <div class="app6-symbol" style="transform: scale(0.6); transform-origin: top left;">
-                            <div class="app6-frame app6-hazard-frame">
-                                <div class="app6-asset-icon">${iconText}</div>
-                            </div>
-                        </div>
-                    `;
-                    overviewMarker = new maplibregl.Marker({ element: overviewEl, anchor: 'center' }).setLngLat([evt.lng, evt.lat]).addTo(overviewMap);
-                }
-                
-                eventMarkers[evt.id] = { marker, el, overviewMarker };
+                eventMarkers[evt.id] = { marker, el };
             }
         });
         
@@ -1025,7 +1028,10 @@ async function fetchAndRenderRadars() {
                         </div>
                     </div>
                     <div class="app6-amplifiers">
-                        <div class="app6-amp-h">${rad.description}</div>
+                        <div class="app6-amp-right">
+                            <div class="app6-amp-t">SNS</div>
+                            <div class="app6-amp-h">${rad.description}</div>
+                        </div>
                     </div>
                 `;
                 
@@ -1033,21 +1039,7 @@ async function fetchAndRenderRadars() {
                     .setLngLat([rad.lng, rad.lat])
                     .addTo(map);
                 
-                let overviewMarker = null;
-                if (overviewMap) {
-                    const overviewEl = document.createElement('div');
-                    overviewEl.className = `app6-marker app6-hazard`;
-                    overviewEl.innerHTML = `
-                        <div class="app6-symbol" style="transform: scale(0.6); transform-origin: top left;">
-                            <div class="app6-frame app6-hazard-frame">
-                                <div class="app6-asset-icon">SNS</div>
-                            </div>
-                        </div>
-                    `;
-                    overviewMarker = new maplibregl.Marker({ element: overviewEl, anchor: 'center' }).setLngLat([rad.lng, rad.lat]).addTo(overviewMap);
-                }
-                
-                eventMarkers[rad.id] = { marker, el, overviewMarker };
+                eventMarkers[rad.id] = { marker, el };
             }
         });
         
@@ -1155,13 +1147,18 @@ function getManeuverIcon(step) {
 
 function updateNavStepsUI(lng, lat) {
     const navStepsEl = document.getElementById('nav-steps');
+    const overviewInfoEl = document.getElementById('overview-info');
 
     if (!routePreviewReady || currentRouteSteps.length === 0) {
         navStepsEl.classList.remove('visible');
+        if (overviewInfoEl) overviewInfoEl.classList.remove('visible');
         return;
     }
 
     const upcomingSteps = [];
+    let totalRemainingDist = 0;
+    let totalRemainingDur = 0;
+
     for (const step of currentRouteSteps) {
         if (step.passed) continue;
 
@@ -1175,6 +1172,27 @@ function updateNavStepsUI(lng, lat) {
             instruction: formatManeuver(step),
             icon: getManeuverIcon(step)
         });
+
+        totalRemainingDist += step.distance;
+        totalRemainingDur += step.duration;
+    }
+
+    if (overviewInfoEl && upcomingSteps.length > 0) {
+        const activeStep = currentRouteSteps.find(s => !s.passed);
+        if (activeStep) {
+            // Korigování celkové vzdálenosti o už ujetou část aktuálního kroku
+            totalRemainingDist = totalRemainingDist - activeStep.distance + upcomingSteps[0].distance;
+            if (activeStep.distance > 0) {
+                const ratio = upcomingSteps[0].distance / activeStep.distance;
+                totalRemainingDur = totalRemainingDur - activeStep.duration + (activeStep.duration * ratio);
+            }
+        }
+        
+        document.getElementById('overview-dist').innerText = (totalRemainingDist / 1000).toFixed(1) + ' km';
+        document.getElementById('overview-eta').innerText = Math.round(totalRemainingDur / 60) + ' min';
+        overviewInfoEl.classList.add('visible');
+    } else if (overviewInfoEl) {
+        overviewInfoEl.classList.remove('visible');
     }
 
     const maxStepsToShow = window.innerWidth >= 768 ? 3 : 1;
