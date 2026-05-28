@@ -25,6 +25,9 @@ userEl.innerHTML = `
             <div class="app6-amp-t">SELF</div>
             <div class="app6-amp-h" id="self-amp-h">HDG --</div>
         </div>
+        <div class="app6-amp-bottom">
+            <div class="app6-amp-y" id="self-amp-mgrs">--</div>
+        </div>
     </div>
 `;
 
@@ -257,6 +260,9 @@ if (socket) {
                 bftMarkers[u.id].el.querySelector('.app6-amp-z').innerText = `${u.speed || 0} km/h`;
                 bftMarkers[u.id].el.querySelector('.app6-amp-h').innerText = `HDG ${u.heading || '--'}`;
                 
+                const mgrsEl = bftMarkers[u.id].el.querySelector('.app6-amp-y');
+                if (mgrsEl) mgrsEl.innerText = formatMGRS(u.lng, u.lat);
+
                 bftMarkers[u.id].userData = u;
                 const currentClass = Array.from(bftMarkers[u.id].el.classList).find(c => c.startsWith('app6-asset-'));
                 const newClass = `app6-asset-${u.assetType || 'car'}`;
@@ -878,6 +884,8 @@ function handlePositionSuccess(position) {
     document.getElementById('pos-heading').innerText = displayHeading;
     document.getElementById('self-amp-z').innerText = `${speedKmh.toFixed(0)} km/h`;
     document.getElementById('self-amp-h').innerText = `HDG ${displayHeading}`;
+    const mgrsEl = document.getElementById('self-amp-mgrs');
+    if (mgrsEl) mgrsEl.innerText = formatMGRS(lng, lat);
 
     // Update Map
     userMarker.setLngLat([lng, lat]);
@@ -1087,6 +1095,9 @@ function createBftMarker(u) {
             <div class="app6-amp-right">
                 <div class="app6-amp-t">${(u.id || 'BFT').substring(0, 4).toUpperCase()}</div>
                 <div class="app6-amp-h">HDG ${u.heading || '--'}</div>
+            </div>
+            <div class="app6-amp-bottom">
+                <div class="app6-amp-y">${formatMGRS(u.lng, u.lat)}</div>
             </div>
         </div>
     `;

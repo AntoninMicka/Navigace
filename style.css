@@ -172,6 +172,23 @@ body, html {
     text-align: left;
 }
 
+.app6-amp-bottom {
+    position: absolute;
+    top: 24px;
+    left: 0;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.65rem;
+    color: #b8ecff;
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+    font-weight: bold;
+    pointer-events: auto;
+    white-space: nowrap;
+}
+
 .app6-marker-stale {
     opacity: 0.62;
 }
@@ -256,7 +273,8 @@ body, html {
 }
 
 .app6-hazard .app6-amp-left,
-.app6-hazard .app6-amp-right {
+.app6-hazard .app6-amp-right,
+.app6-hazard .app6-amp-bottom {
     color: #ffcccc;
 }
 
