@@ -10,6 +10,8 @@
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
     <!-- Socket.io klient -->
     <script src="/socket.io/socket.io.js"></script>
+    <!-- MGRS Knihovna -->
+    <script src="https://unpkg.com/mgrs@1.0.0/dist/mgrs.js"></script>
     <!-- Vlastní styly -->
     <link rel="stylesheet" href="style.css">
 </head>
@@ -67,8 +69,7 @@
                     </select>
                     <div class="intel-data">
                         <p>STATUS: <span id="status" class="text-green">ONLINE</span></p>
-                        <p>LAT: <span id="pos-lat">--</span></p>
-                        <p>LON: <span id="pos-lon">--</span></p>
+                        <p>GRID: <span id="pos-mgrs">--</span></p>
                         <p>SPD: <span id="pos-speed">--</span> km/h</p>
                         <p>HDG: <span id="pos-heading">--</span>°</p>
                     </div>

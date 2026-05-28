@@ -8,8 +8,9 @@ const ASSETS_TO_CACHE = [
     '/app.js',
     '/style.css',
     '/manifest.json',
+    'https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css',
     'https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js',
-    'https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css'
+    'https://unpkg.com/mgrs@1.0.0/dist/mgrs.js'
 ];
 
 // 1. Instalace Service Workeru a nacachování App Shellu
@@ -60,7 +61,11 @@ self.addEventListener('fetch', (event) => {
     // STRATEGIE B: Vlastní API (Routování, Radary) -> Network First
     else if (url.pathname.startsWith('/api/')) {
         event.respondWith(
-            fetch(event.request).catch(() => caches.match(event.request))
+            fetch(event.request).then((networkResponse) => {
+                const clonedResponse = networkResponse.clone();
+                caches.open(APP_CACHE_NAME).then((cache) => cache.put(event.request, clonedResponse));
+                return networkResponse;
+            }).catch(() => caches.match(event.request))
         );
     }
     // STRATEGIE C: App Shell (CSS, JS, HTML) -> Stale-While-Revalidate

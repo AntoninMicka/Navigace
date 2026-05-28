@@ -169,7 +169,7 @@ app.get('/api/radars', async (req, res) => {
     if (now - lastRadarsFetch > RADARS_CACHE_TTL || radarsCache.length === 0) {
         try {
             // Hledáme jak klasické radary (node), tak úseková měření (často relace nwr)
-            const overpassQuery = `[out:json][timeout:60][bbox:48.55,12.09,51.06,18.86];(node["highway"="speed_camera"];nwr["enforcement"="average_speed"];);out center;`;
+            const overpassQuery = `[out:json][timeout:120][bbox:48.55,12.09,51.06,18.86];(node["highway"="speed_camera"];nwr["enforcement"="average_speed"];);out center;`;
             const overpassUrl = `https://overpass-api.de/api/interpreter`;
             
             const response = await fetch(overpassUrl, {
@@ -256,7 +256,8 @@ app.get('/api/pois', async (req, res) => {
                     console.log(`[DEBUG] Použitý dotaz: ${overpassQuery}`);
                 }
                 poisCache = data.elements.map(node => {
-                    const amenity = node.tags ? node.tags.amenity : 'fuel';
+                    const tags = node.tags || {};
+                    const amenity = tags.amenity || 'fuel';
                     let type = 'fuel';
                     let description = 'Týl (Palivo)';
                     

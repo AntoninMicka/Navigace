@@ -69,6 +69,86 @@ overviewMap = new maplibregl.Map({
     touchPitch: false
 });
 
+// --- Taktická mřížka (Grid Overlay) ---
+function applyGridToMap(targetMap, sourceId) {
+    if (!targetMap || !targetMap.isStyleLoaded()) return;
+    
+    const bounds = targetMap.getBounds();
+    const zoom = targetMap.getZoom();
+    
+    // Dynamická hustota sítě podle přiblížení
+    let step = 1;
+    if (zoom > 13) step = 0.01;
+    else if (zoom > 9) step = 0.1;
+
+    const features = [];
+    
+    const minLng = Math.floor(bounds.getWest() / step) * step;
+    const maxLng = Math.ceil(bounds.getEast() / step) * step;
+    for (let lng = minLng; lng <= maxLng; lng += step) {
+        features.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [[lng, Math.max(bounds.getSouth() - 1, -90)], [lng, Math.min(bounds.getNorth() + 1, 90)]] }
+        });
+    }
+
+    const minLat = Math.floor(bounds.getSouth() / step) * step;
+    const maxLat = Math.ceil(bounds.getNorth() / step) * step;
+    for (let lat = minLat; lat <= maxLat; lat += step) {
+        features.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [[Math.max(bounds.getWest() - 1, -180), lat], [Math.min(bounds.getEast() + 1, 180), lat]] }
+        });
+    }
+
+    const geojson = { type: 'FeatureCollection', features };
+
+    if (targetMap.getSource(sourceId)) {
+        targetMap.getSource(sourceId).setData(geojson);
+    } else {
+        targetMap.addSource(sourceId, { type: 'geojson', data: geojson });
+        
+        // Snaha vložit grid POD textové popisky mapy (aby nebyla rušivá)
+        const preferredLayers = ['waterway-name', 'road-label', 'place-label', 'poi-label'];
+        const beforeId = preferredLayers.find(id => targetMap.getLayer(id));
+        
+        targetMap.addLayer({
+            id: `${sourceId}-line`,
+            type: 'line',
+            source: sourceId,
+            paint: {
+                'line-color': '#00ff00',
+                'line-width': 1,
+                'line-opacity': 0.18,
+                'line-dasharray': [4, 4]
+            }
+        }, beforeId);
+    }
+}
+
+// Zajištění vykreslení Gridu na obě mapy
+map.on('style.load', () => applyGridToMap(map, 'tactical-grid'));
+map.on('move', () => applyGridToMap(map, 'tactical-grid'));
+overviewMap.on('style.load', () => applyGridToMap(overviewMap, 'overview-tactical-grid'));
+overviewMap.on('move', () => applyGridToMap(overviewMap, 'overview-tactical-grid'));
+
+// Formátování do MGRS řetězce
+function formatMGRS(lng, lat) {
+    if (typeof mgrs === 'undefined') return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    try {
+        const m = mgrs.forward([lng, lat]);
+        const match = m.match(/^(\d+[A-Z])([A-Z]{2})(\d+)$/i);
+        if (match) {
+            const en = match[3];
+            const half = en.length / 2;
+            return `${match[1]} ${match[2]} ${en.substring(0, half)} ${en.substring(half)}`;
+        }
+        return m;
+    } catch(e) {
+        return '--';
+    }
+}
+
 // Značka uživatele na přehledové mapě (bez textových popisků pro přehlednost)
 const overviewUserEl = document.createElement('div');
 overviewUserEl.className = 'app6-marker app6-marker-self app6-asset-car';
@@ -705,8 +785,7 @@ function handlePositionSuccess(position) {
     // Update UI
     document.getElementById('status').innerText = 'ONLINE';
     document.getElementById('status').style.color = '#00ff00';
-    document.getElementById('pos-lat').innerText = lat.toFixed(5);
-    document.getElementById('pos-lon').innerText = lng.toFixed(5);
+    document.getElementById('pos-mgrs').innerText = formatMGRS(lng, lat);
     document.getElementById('pos-speed').innerText = speedKmh > 0 ? displaySpeed : '0';
     document.getElementById('pos-heading').innerText = displayHeading;
     document.getElementById('self-amp-z').innerText = `${speedKmh.toFixed(0)} km/h`;
@@ -1320,7 +1399,9 @@ function updateNavStepsUI(lng, lat) {
         upcomingSteps.push({
             distance,
             instruction: formatManeuver(step),
-            icon: getManeuverIcon(step)
+            iconText: getManeuverIcon(step),
+            isManeuver: true,
+            color: '#ffcc00'
         });
 
         totalRemainingDist += step.distance;
@@ -1345,19 +1426,27 @@ function updateNavStepsUI(lng, lat) {
             }
 
             if (isAhead) {
-                let iconText = 'UNK';
-                if (m.userData.type === 'accident') iconText = 'HAZ';
-                else if (m.userData.type === 'closure') iconText = 'OBS';
-                else if (m.userData.type === 'radar') iconText = 'SNS';
-                else if (m.userData.type === 'average_camera') iconText = 'AVG';
-                else if (m.userData.type === 'fuel') iconText = 'LOG';
-                else if (m.userData.type === 'medical') iconText = 'MED';
-                else if (m.userData.type === 'police') iconText = 'POL';
+                let iconClass = 'app6-icon-unknown';
+                let color = '#00ff00';
+
+                if (['accident', 'closure', 'radar', 'average_camera', 'police'].includes(m.userData.type)) {
+                    color = '#ff3333';
+                }
+
+                if (m.userData.type === 'accident') iconClass = 'app6-icon-hazard';
+                else if (m.userData.type === 'closure') iconClass = 'app6-icon-obstruction';
+                else if (m.userData.type === 'radar') iconClass = 'app6-icon-sensor';
+                else if (m.userData.type === 'average_camera') iconClass = 'app6-icon-average-camera';
+                else if (m.userData.type === 'fuel') iconClass = 'app6-icon-fuel';
+                else if (m.userData.type === 'medical') iconClass = 'app6-icon-medical';
+                else if (m.userData.type === 'police') iconClass = 'app6-icon-police';
 
                 upcomingSteps.push({
                     distance: dist,
                     instruction: m.userData.description,
-                    icon: iconText
+                    iconClass: iconClass,
+                    isManeuver: false,
+                    color: color
                 });
             }
         }
@@ -1384,15 +1473,31 @@ function updateNavStepsUI(lng, lat) {
         overviewInfoEl.classList.remove('visible');
     }
 
-    const maxStepsToShow = window.innerWidth >= 768 ? 3 : 1;
-    const stepsToShow = upcomingSteps.slice(0, maxStepsToShow);
+    let stepsToShow = [];
+    if (window.innerWidth >= 768) {
+        // Výpočet počtu manévrů: cca 60px na krok, maximálně do 1/3 výšky obrazovky
+        const maxSteps = Math.max(3, Math.floor((window.innerHeight / 3) / 60));
+        stepsToShow = upcomingSteps.slice(0, maxSteps);
+    } else if (upcomingSteps.length > 0) {
+        stepsToShow.push(upcomingSteps[0]);
+        // Pokud je první zobrazená položka upozornění, přidáme i nejbližší fyzický manévr
+        if (!upcomingSteps[0].isManeuver) {
+            const firstManeuver = upcomingSteps.find(s => s.isManeuver);
+            if (firstManeuver) stepsToShow.push(firstManeuver);
+        }
+    }
 
     navStepsEl.innerHTML = stepsToShow.map(step => `
         <div class="nav-step">
-            <span class="nav-step-icon">${step.icon}</span>
+            <div class="nav-step-icon-box ${step.iconClass || ''}" style="color: ${step.color}; border-color: ${step.color};">
+                ${step.isManeuver ? 
+                    `<span class="nav-step-text-icon">${step.iconText}</span>` : 
+                    `<div class="app6-asset-icon" style="position:relative; transform:none; left:auto; top:auto; width:22px; height:22px;"></div>`
+                }
+            </div>
             <div class="nav-step-info">
                 <div class="nav-step-distance">${step.distance < 1000 ? Math.round(step.distance / 10) * 10 + ' m' : (step.distance / 1000).toFixed(1) + ' km'}</div>
-                <div class="nav-step-instruction">${step.instruction}</div>
+                <div class="nav-step-instruction" style="color: ${step.color};">${step.instruction}</div>
             </div>
         </div>
     `).join('');

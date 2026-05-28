@@ -80,7 +80,7 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 
 ## 6. Grafika a UI / UX
 ### Vizuální styl
-- [ ] Taktický grid overlay (ATAK styl)
+- [x] Taktický grid overlay (ATAK styl)
 - [ ] Téma a barvy (Dark tactical, Green/Orange/Red threat vizualizace, Glow efekty)
 - [ ] Monospace / military typografie
 - [ ] CRT-inspired retro téma (volitelné)

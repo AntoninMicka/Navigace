@@ -321,12 +321,21 @@ body, html {
     box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
 }
 
-.nav-step-icon {
-    font-size: 1.8rem;
-    color: #ffcc00;
+.nav-step-icon-box {
+    width: 34px;
+    height: 34px;
     flex-shrink: 0;
-    width: 30px;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid;
+    background: rgba(0, 20, 0, 0.6);
+    border-radius: 2px;
+}
+
+.nav-step-text-icon {
+    font-size: 1.4rem;
+    font-weight: bold;
 }
 
 .nav-step-info {
@@ -605,10 +614,9 @@ button:hover {
     background: rgba(0, 255, 0, 0.2);
 }
 
-/* HUD Třída - zrcadlení vertikálně */
+/* HUD Třída - zrcadlení horizontálně pro čelní sklo auta */
 .hud-mode {
-    transform: scaleY(-1);
-    /* Kompenzace stínů/barev by přišla sem */
+    transform: scaleX(-1);
 }
 
 /* Desktop: Velký displej s plovoucími HUD widgety */
