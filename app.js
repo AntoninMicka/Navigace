@@ -1053,15 +1053,16 @@ async function fetchAndRenderEvents() {
                 el.id = `evt-${evt.id}`;
                 
                 let iconText = 'UNK'; // Unknown default
-                if (evt.type === 'accident') iconText = 'HAZ'; // Hazard
-                if (evt.type === 'closure') iconText = 'OBS'; // Obstruction
+                let iconClass = 'app6-icon-unknown';
+                if (evt.type === 'accident') { iconText = 'HAZ'; iconClass = 'app6-icon-hazard'; }
+                if (evt.type === 'closure') { iconText = 'OBS'; iconClass = 'app6-icon-obstruction'; }
 
-                el.className = `app6-marker app6-hazard`;
+                el.className = `app6-marker app6-hazard ${iconClass}`;
                 el.innerHTML = `
                     ${leaderLineSVG}
                     <div class="app6-symbol">
                         <div class="app6-frame app6-hazard-frame">
-                            <div class="app6-asset-icon">${iconText}</div>
+                            <div class="app6-asset-icon"></div>
                         </div>
                     </div>
                     <div class="app6-amplifiers">
@@ -1106,18 +1107,24 @@ async function fetchAndRenderRadars() {
                 const el = document.createElement('div');
                 el.id = `evt-${rad.id}`;
                 
-                // Využijeme existující CSS třídu app6-hazard (červený kosočtverec)
-                el.className = `app6-marker app6-hazard`;
+                let iconText = 'SNS';
+                let iconClass = 'app6-icon-sensor';
+                if (rad.type === 'average_camera') {
+                    iconText = 'AVG';
+                    iconClass = 'app6-icon-average-camera';
+                }
+                
+                el.className = `app6-marker app6-hazard ${iconClass}`;
                 el.innerHTML = `
                     ${leaderLineSVG}
                     <div class="app6-symbol">
                         <div class="app6-frame app6-hazard-frame">
-                            <div class="app6-asset-icon">SNS</div>
+                            <div class="app6-asset-icon"></div>
                         </div>
                     </div>
                     <div class="app6-amplifiers">
                         <div class="app6-amp-right">
-                            <div class="app6-amp-t">SNS</div>
+                            <div class="app6-amp-t">${iconText}</div>
                             <div class="app6-amp-h">${rad.description}</div>
                         </div>
                     </div>
@@ -1154,21 +1161,22 @@ async function fetchAndRenderPOIs() {
                 
                 let iconText = 'LOG';
                 let frameClass = 'app6-neutral-frame';
-                let markerClass = 'app6-neutral';
+                let markerClass = 'app6-neutral app6-icon-fuel';
                 
                 if (poi.type === 'medical') {
                     iconText = 'MED';
+                    markerClass = 'app6-neutral app6-icon-medical';
                 } else if (poi.type === 'police') {
                     iconText = 'POL';
                     frameClass = 'app6-hazard-frame';
-                    markerClass = 'app6-hazard';
+                    markerClass = 'app6-hazard app6-icon-police';
                 }
 
                 el.className = `app6-marker ${markerClass}`;
                 el.innerHTML = `
                     <div class="app6-symbol">
                         <div class="${frameClass}">
-                            <div class="app6-asset-icon">${iconText}</div>
+                            <div class="app6-asset-icon"></div>
                         </div>
                     </div>
                     <div class="app6-amplifiers">
@@ -1341,6 +1349,7 @@ function updateNavStepsUI(lng, lat) {
                 if (m.userData.type === 'accident') iconText = 'HAZ';
                 else if (m.userData.type === 'closure') iconText = 'OBS';
                 else if (m.userData.type === 'radar') iconText = 'SNS';
+                else if (m.userData.type === 'average_camera') iconText = 'AVG';
                 else if (m.userData.type === 'fuel') iconText = 'LOG';
                 else if (m.userData.type === 'medical') iconText = 'MED';
                 else if (m.userData.type === 'police') iconText = 'POL';

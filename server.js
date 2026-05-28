@@ -168,8 +168,8 @@ app.get('/api/radars', async (req, res) => {
 
     if (now - lastRadarsFetch > RADARS_CACHE_TTL || radarsCache.length === 0) {
         try {
-            // Správná syntaxe + Bounding box pro ČR (jih, západ, sever, východ)
-            const overpassQuery = `[out:json][timeout:25];node["highway"="speed_camera"](48.55,12.09,51.06,18.86);out;`;
+            // Hledáme jak klasické radary (node), tak úseková měření (často relace nwr)
+            const overpassQuery = `[out:json][timeout:60][bbox:48.55,12.09,51.06,18.86];(node["highway"="speed_camera"];nwr["enforcement"="average_speed"];);out center;`;
             const overpassUrl = `https://overpass-api.de/api/interpreter`;
             
             const response = await fetch(overpassUrl, {
@@ -186,13 +186,17 @@ app.get('/api/radars', async (req, res) => {
             
             const data = await response.json();
             if (data && data.elements) {
-                radarsCache = data.elements.map(node => ({
-                    id: `osm-rad-${node.id}`,
-                    type: 'radar',
-                    lat: node.lat,
-                    lng: node.lon,
-                    description: 'Senzor (Radar)'
-                }));
+                radarsCache = data.elements.map(node => {
+                    const tags = node.tags || {};
+                    const isAverage = tags['camera:type'] === 'average' || tags['enforcement'] === 'average_speed';
+                    return {
+                        id: `osm-rad-${node.id}`,
+                        type: isAverage ? 'average_camera' : 'radar',
+                        lat: node.lat || (node.center && node.center.lat),
+                        lng: node.lon || (node.center && node.center.lon),
+                        description: isAverage ? 'Úsekové měření' : 'Senzor (Radar)'
+                    };
+                }).filter(rad => rad.lat && rad.lng);
                 lastRadarsFetch = now;
                 console.log(`[SYS] Stáhnuto ${radarsCache.length} radarů z OSM.`);
             }
@@ -220,9 +224,8 @@ app.get('/api/pois', async (req, res) => {
 
     if (now - lastPoisFetch > POIS_CACHE_TTL || poisCache.length === 0) {
         try {
-            // Sloučený dotaz pro Palivo, Nemocnice a Policii v ohraničení ČR.
-            // Použijeme 'nwr' (node/way/relation), protože benzínky a nemocnice se často kreslí jako plochy (budovy). 'out center' z nich udělá souřadnicové body.
-            const overpassQuery = `[out:json][timeout:120][bbox:48.55,12.09,51.06,18.86];(nwr["amenity"="fuel"];nwr["amenity"="hospital"];nwr["amenity"="police"];);out center;`;
+            // Přidáme i nabíjecí stanice (EV) a vytáhneme detaily
+            const overpassQuery = `[out:json][timeout:120][bbox:48.55,12.09,51.06,18.86];(nwr["amenity"="fuel"];nwr["amenity"="charging_station"];nwr["amenity"="hospital"];nwr["amenity"="police"];);out center;`;
             const overpassUrl = `https://overpass-api.de/api/interpreter`;
             const response = await fetch(overpassUrl, {
                 method: 'POST',
@@ -257,7 +260,19 @@ app.get('/api/pois', async (req, res) => {
                     let type = 'fuel';
                     let description = 'Týl (Palivo)';
                     
-                    if (amenity === 'hospital') {
+                    if (amenity === 'charging_station') {
+                        type = 'fuel';
+                        description = 'Týl (EV Nabíječka)';
+                    } else if (amenity === 'fuel') {
+                        let fuelTypes = [];
+                        if (tags['fuel:diesel'] === 'yes') fuelTypes.push('Diesel');
+                        if (tags['fuel:octane_95'] === 'yes') fuelTypes.push('N95');
+                        if (tags['fuel:octane_98'] === 'yes') fuelTypes.push('N98');
+                        if (tags['fuel:lpg'] === 'yes') fuelTypes.push('LPG');
+                        if (tags['fuel:cng'] === 'yes') fuelTypes.push('CNG');
+                        if (tags['fuel:adblue'] === 'yes') fuelTypes.push('AdBlue');
+                        if (fuelTypes.length > 0) description += ` [${fuelTypes.join(', ')}]`;
+                    } else if (amenity === 'hospital' || amenity === 'clinic') {
                         type = 'medical';
                         description = 'Medevac (Nemocnice)';
                     } else if (amenity === 'police') {
