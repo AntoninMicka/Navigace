@@ -32,7 +32,16 @@ app.get('/api/route', async (req, res) => {
         return;
     }
 
-    const osrmUrl = `https://router.project-osrm.org/route/v1/${routeProfile}/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true`;
+    let osrmUrl;
+    const coordsStr = `${startLng},${startLat};${destLng},${destLat}`;
+    const params = 'overview=full&geometries=geojson&steps=true';
+    if (routeProfile === 'foot') {
+        osrmUrl = `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${coordsStr}?${params}`;
+    } else if (routeProfile === 'bicycle') {
+        osrmUrl = `https://routing.openstreetmap.de/routed-bike/route/v1/driving/${coordsStr}?${params}`;
+    } else {
+        osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?${params}`;
+    }
 
     try {
         const response = await fetch(osrmUrl, { headers: { 'User-Agent': 'TacticalNav/1.0 (Node.js backend)' } });
@@ -62,7 +71,14 @@ app.get('/api/nearest', async (req, res) => {
         return;
     }
 
-    const osrmUrl = `https://router.project-osrm.org/nearest/v1/${routeProfile}/${lng},${lat}?number=1`;
+    let osrmUrl;
+    if (routeProfile === 'foot') {
+        osrmUrl = `https://routing.openstreetmap.de/routed-foot/nearest/v1/driving/${lng},${lat}?number=1`;
+    } else if (routeProfile === 'bicycle') {
+        osrmUrl = `https://routing.openstreetmap.de/routed-bike/nearest/v1/driving/${lng},${lat}?number=1`;
+    } else {
+        osrmUrl = `https://router.project-osrm.org/nearest/v1/driving/${lng},${lat}?number=1`;
+    }
 
     try {
         const response = await fetch(osrmUrl, { headers: { 'User-Agent': 'TacticalNav/1.0 (Node.js backend)' } });

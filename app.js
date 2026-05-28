@@ -48,6 +48,7 @@ let currentDestLng = null;
 let currentDestLat = null;
 let currentRouteSteps = []; // Pokyny pro navigaci
 let currentRouteCoords = []; // Souřadnice trasy pro výpočet odchylky
+let offRouteCounter = 0; // Počítadlo pro potvrzení sjetí z trasy
 let destinationMarker = null;
 let routePreviewReady = false;
 const MAX_ROUTE_SNAP_DISTANCE_METERS = 100;
@@ -433,11 +434,17 @@ function getRouteLayerBeforeId() {
 }
 
 function getExternalRouteUrl(startLng, startLat, destLng, destLat, profile = 'driving') {
-    return `https://router.project-osrm.org/route/v1/${profile}/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true`;
+    const coords = `${startLng},${startLat};${destLng},${destLat}`;
+    const params = 'overview=full&geometries=geojson&steps=true';
+    if (profile === 'foot') return `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${coords}?${params}`;
+    if (profile === 'bicycle') return `https://routing.openstreetmap.de/routed-bike/route/v1/driving/${coords}?${params}`;
+    return `https://router.project-osrm.org/route/v1/driving/${coords}?${params}`;
 }
 
 function getExternalNearestUrl(lng, lat, profile = 'driving') {
-    return `https://router.project-osrm.org/nearest/v1/${profile}/${lng},${lat}?number=1`;
+    if (profile === 'foot') return `https://routing.openstreetmap.de/routed-foot/nearest/v1/driving/${lng},${lat}?number=1`;
+    if (profile === 'bicycle') return `https://routing.openstreetmap.de/routed-bike/nearest/v1/driving/${lng},${lat}?number=1`;
+    return `https://router.project-osrm.org/nearest/v1/driving/${lng},${lat}?number=1`;
 }
 
 function getRoutingProfile() {
@@ -750,9 +757,15 @@ function handlePositionSuccess(position) {
     const coords = position.coords;
     const lng = coords.longitude;
     const lat = coords.latitude;
+    const accuracy = coords.accuracy || 0;
 
     if (!isValidLngLat(lng, lat)) {
         sysLog('WARN: GPS vrátila neplatné souřadnice.');
+        return;
+    }
+
+    // Ignorovat velké odskoky GPS (tzv. ustřelení), pokud už máme nějakou polohu zaměřenou.
+    if (hasLocation && accuracy > 60) {
         return;
     }
 
@@ -838,14 +851,22 @@ function handlePositionSuccess(position) {
             if (d < minMeters) minMeters = d;
         }
         
-        if (minMeters > 50) { // Tolerance 50 metrů
-            sysLog(`WARN: Mimo trasu (${Math.round(minMeters)}m). Přepočítávám...`);
-            currentRouteCoords = []; // Vymazat, aby se nepřepočítávalo v nekonečné smyčce
-            if (currentDestLng !== null && currentDestLat !== null) {
-                calculateRoute(currentDestLng, currentDestLat, { startNavigationAfterRoute: true });
+        if (minMeters > 60) { // Tolerance zvýšena na 60 metrů
+            offRouteCounter++;
+            if (offRouteCounter >= 3) { // Musí se to potvrdit 3x po sobě
+                sysLog(`WARN: Mimo trasu (${Math.round(minMeters)}m). Přepočítávám...`);
+                currentRouteCoords = []; // Vymazat, aby se nepřepočítávalo v nekonečné smyčce
+                offRouteCounter = 0;
+                if (currentDestLng !== null && currentDestLat !== null) {
+                    calculateRoute(currentDestLng, currentDestLat, { startNavigationAfterRoute: true });
+                }
             }
+        } else {
+            offRouteCounter = 0; // Jsme zpět na trase, resetujeme počítadlo
         }
     }
+
+
 
     // --- UI a Hlášení Navigace ---
     if (isNavigating) {
