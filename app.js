@@ -234,7 +234,19 @@ const socket = typeof io !== 'undefined' ? io() : null;
 const bftMarkers = {}; // Seznam značek ostatních uživatelů
 
 if (socket) {
-    socket.on('connect', () => sysLog(`BFT online (ID: ${socket.id.substring(0,5)})`));
+    socket.on('connect', () => {
+        sysLog(`BFT online (ID: ${socket.id.substring(0,5)})`);
+        
+        // Po připojení odešleme naše lokálně uložené POI na server pro ostatní
+        const pois = JSON.parse(localStorage.getItem('tacnav_pois') || '[]');
+        pois.forEach(p => socket.emit('poi_add', p));
+    });
+
+    // Přijetí POI cílů od ostatních ze sítě
+    socket.on('bft_pois_update', (serverPois) => {
+        bftSharedPois = serverPois;
+        renderPOIs();
+    });
     
     socket.on('bft_update', (users) => {
         const activeIds = new Set(users.map(u => u.id));
@@ -1184,13 +1196,19 @@ document.getElementById('search-input').addEventListener('keydown', (e) => {
 
 // --- Lokální ukládání bodů zájmu (POI) ---
 let customPoiMarkers = []; // Pole pro udržení a čištění značek v mapě
+let bftSharedPois = []; // Sdílené POI ze serveru
 
 map.on('contextmenu', (e) => {
     const name = prompt("Zadejte taktické označení cíle (POI):", "Cíl");
     if (name) {
+        const newPoi = { id: 'poi-' + Date.now() + '-' + Math.floor(Math.random()*1000), name, lng: e.lngLat.lng, lat: e.lngLat.lat };
         const pois = JSON.parse(localStorage.getItem('tacnav_pois') || '[]');
-        pois.push({ name, lng: e.lngLat.lng, lat: e.lngLat.lat });
+        pois.push(newPoi);
         localStorage.setItem('tacnav_pois', JSON.stringify(pois));
+        
+        // Odeslání všem uživatelům přes BFT
+        if (socket && socket.connected) socket.emit('poi_add', newPoi);
+        
         sysLog(`POI uloženo: ${name}`);
         renderPOIs();
     }
@@ -1204,12 +1222,33 @@ function renderPOIs() {
     const poiListEl = document.getElementById('poi-list');
     if (poiListEl) poiListEl.innerHTML = '';
 
-    const pois = JSON.parse(localStorage.getItem('tacnav_pois') || '[]');
-    pois.forEach((poi, index) => {
+    let localPois = JSON.parse(localStorage.getItem('tacnav_pois') || '[]');
+    let needsSave = false;
+    
+    // Zajištění kompatibility starých dat (přidání ID)
+    localPois.forEach(p => {
+        if (!p.id) {
+            p.id = 'poi-' + Date.now() + '-' + Math.floor(Math.random()*10000);
+            needsSave = true;
+        }
+    });
+    if (needsSave) localStorage.setItem('tacnav_pois', JSON.stringify(localPois));
+
+    // Sloučení lokálních a serverových (BFT) POI podle ID (odfiltrování duplicit)
+    const mergedPoisMap = {};
+    bftSharedPois.forEach(p => mergedPoisMap[p.id] = p);
+    localPois.forEach(p => mergedPoisMap[p.id] = p); // Moje přepíší případné sdílené
+    
+    const mergedPois = Object.values(mergedPoisMap);
+
+    mergedPois.forEach((poi) => {
+        const isLocal = localPois.some(p => p.id === poi.id);
+        const dotColor = isLocal ? '#ffcc00' : '#00a6ff'; // Žlutá = moje, Modrá = ze sítě (BFT)
+
         // 1. Vykreslení do Mapy
         const el = document.createElement('div');
-        el.style.width = '12px'; el.style.height = '12px';
-        el.style.backgroundColor = '#ffcc00'; el.style.borderRadius = '50%';
+        el.style.width = '14px'; el.style.height = '14px';
+        el.style.backgroundColor = dotColor; el.style.borderRadius = '50%';
         el.style.border = '1px solid #000'; el.title = poi.name;
         
         el.addEventListener('click', (e) => { e.stopPropagation(); calculateRoute(poi.lng, poi.lat); setMobileScreen('map'); });
@@ -1232,7 +1271,7 @@ function renderPOIs() {
             nameSpan.style.overflow = 'hidden';
             nameSpan.style.textOverflow = 'ellipsis';
             nameSpan.style.whiteSpace = 'nowrap';
-            nameSpan.style.color = '#ffcc00';
+            nameSpan.style.color = dotColor;
             
             const btnBox = document.createElement('div');
             btnBox.style.display = 'flex';
@@ -1253,8 +1292,13 @@ function renderPOIs() {
             delBtn.style.color = '#ff3333';
             delBtn.onclick = () => {
                 if (confirm(`Smazat cíl: ${poi.name}?`)) {
-                    pois.splice(index, 1);
-                    localStorage.setItem('tacnav_pois', JSON.stringify(pois));
+                    if (isLocal) {
+                        localPois = localPois.filter(p => p.id !== poi.id);
+                        localStorage.setItem('tacnav_pois', JSON.stringify(localPois));
+                    }
+                    // Smazat i u ostatních přes BFT server
+                    if (socket && socket.connected) socket.emit('poi_delete', poi.id);
+                    bftSharedPois = bftSharedPois.filter(p => p.id !== poi.id); // Okamžitá odezva UI
                     renderPOIs();
                 }
             };
@@ -1284,9 +1328,13 @@ if (btnAddPoi) {
         }
         const name = prompt("Zadejte název pro aktuální polohu:", "Moje pozice");
         if (name) {
+            const newPoi = { id: 'poi-' + Date.now() + '-' + Math.floor(Math.random()*1000), name, lng: currentLng, lat: currentLat };
             const pois = JSON.parse(localStorage.getItem('tacnav_pois') || '[]');
-            pois.push({ name, lng: currentLng, lat: currentLat });
+            pois.push(newPoi);
             localStorage.setItem('tacnav_pois', JSON.stringify(pois));
+            
+            if (socket && socket.connected) socket.emit('poi_add', newPoi);
+            
             sysLog(`POI uloženo: ${name}`);
             renderPOIs();
         }

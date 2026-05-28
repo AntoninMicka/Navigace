@@ -358,15 +358,35 @@ try {
 // Inicializace Socket.io
 const io = new Server();
 const bftUsers = {}; // Paměť pro pozice uživatelů
+const bftPois = {}; // Paměť pro sdílené body zájmu (POI)
 
 io.on('connection', (socket) => {
     console.log(`[BFT] Uživatel připojen: ${socket.id}`);
     
+    // Odeslání existujících POI sítě novému klientovi
+    socket.emit('bft_pois_update', Object.values(bftPois));
+
     socket.on('position_update', (data) => {
         // Uložení/aktualizace pozice uživatele
         bftUsers[socket.id] = { id: socket.id, ...data };
         // Rozeslání všem připojeným klientům
         io.emit('bft_update', Object.values(bftUsers));
+    });
+
+    // Přidání/Aktualizace POI od klienta
+    socket.on('poi_add', (poi) => {
+        if (poi && poi.id) {
+            bftPois[poi.id] = poi;
+            io.emit('bft_pois_update', Object.values(bftPois));
+        }
+    });
+
+    // Smazání POI (kdokoli ve skupině může zrušit cíl)
+    socket.on('poi_delete', (id) => {
+        if (id && bftPois[id]) {
+            delete bftPois[id];
+            io.emit('bft_pois_update', Object.values(bftPois));
+        }
     });
 
     socket.on('disconnect', () => {
