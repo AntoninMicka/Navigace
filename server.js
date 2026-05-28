@@ -216,7 +216,7 @@ app.get('/api/pois', async (req, res) => {
     if (now - lastPoisFetch > POIS_CACHE_TTL || poisCache.length === 0) {
         try {
             // Sloučený dotaz pro Palivo, Nemocnice a Policii v ohraničení ČR
-            const overpassQuery = `[out:json][timeout:25];(node["amenity"="fuel"];node["amenity"="hospital"];node["amenity"="police"];);out tags;`;
+            const overpassQuery = `[out:json][timeout:25][bbox:48.55,12.09,51.06,18.86];(node["amenity"="fuel"];node["amenity"="hospital"];node["amenity"="police"];);out tags;`;
             const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
             const response = await fetch(overpassUrl, { headers: { 'User-Agent': 'TacticalNav/1.0 (Node.js backend)' } });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
