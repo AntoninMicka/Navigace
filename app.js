@@ -677,6 +677,8 @@ function clearRoute() {
     const altsContainer = document.getElementById('route-alternatives');
     if (altsContainer) altsContainer.style.display = 'none';
 
+    document.body.classList.remove('has-route');
+
     stopBackgroundAudio();
     map.easeTo({ pitch: 0, duration: 500 });
     sysLog('Trasa zrušena.', { speak: true });
@@ -814,6 +816,8 @@ async function applySelectedRoute() {
     updateNavigationButtons();
     updateNavStepsUI(currentLng, currentLat);
     renderElevationProfile(); // Update spodní grafiky
+
+    document.body.classList.add('has-route');
 
     if (isNavigating) {
         setTimeout(() => focusCurrentPosition(350), 80);
@@ -1092,7 +1096,7 @@ function createBftMarker(u) {
 }
 
 // Centrování mapy (Tlačítko CENTER)
-document.getElementById('btn-locate').addEventListener('click', () => {
+function centerMap() {
     requestCompassAccess();
     if (hasLocation) {
         if (isNavigating) {
@@ -1108,7 +1112,10 @@ document.getElementById('btn-locate').addEventListener('click', () => {
     if (!wakeLock) {
         requestWakeLock();
     }
-});
+}
+
+document.getElementById('btn-locate').addEventListener('click', centerMap);
+document.getElementById('btn-map-center').addEventListener('click', centerMap);
 
 document.getElementById('btn-compass').addEventListener('click', () => {
     requestCompassAccess();
@@ -1857,20 +1864,14 @@ function renderElevationProfile() {
 // --- VÝBĚR ALTERNATIVNÍCH TRAS ---
 function renderAlternativesUI() {
     let altsContainer = document.getElementById('route-alternatives');
-    if (!altsContainer) {
-        altsContainer = document.createElement('div');
-        altsContainer.id = 'route-alternatives';
-        altsContainer.style.cssText = 'background:rgba(0,0,0,0.85); border:1px solid rgba(0,255,0,0.3); padding:10px; margin-top:10px; display:flex; flex-direction:column; gap:8px; pointer-events:auto;';
-        const leftUI = document.getElementById('top-left-ui');
-        if (leftUI) leftUI.appendChild(altsContainer);
-    }
+    let altsBtn = document.getElementById('btn-map-alts');
     
-    if (availableRoutes.length <= 1) {
-        altsContainer.style.display = 'none';
+    if (!altsContainer || !altsBtn || availableRoutes.length <= 1) {
+        if (altsBtn) altsBtn.style.display = 'none';
         return;
     }
 
-    altsContainer.style.display = 'flex';
+    altsBtn.style.display = 'flex';
     altsContainer.innerHTML = `<div style="color:#0f0; font-weight:bold; font-size:12px; font-family:monospace;">ALT TRASY:</div>`;
     
     availableRoutes.forEach((route, index) => {
@@ -1879,19 +1880,25 @@ function renderAlternativesUI() {
         const isSelected = index === activeRouteIndex;
         
         const btn = document.createElement('div');
-        btn.style.cssText = `padding:8px; border:1px solid ${isSelected ? '#0f0' : '#555'}; background:${isSelected ? 'rgba(0,255,0,0.15)' : 'transparent'}; cursor:pointer; font-size:12px; font-family:monospace; color:${isSelected ? '#0f0' : '#aaa'};`;
+        btn.style.cssText = `padding:8px; border:1px solid ${isSelected ? '#0f0' : '#555'}; background:${isSelected ? 'rgba(0,255,0,0.15)' : 'transparent'}; cursor:pointer; font-size:12px; font-family:monospace; color:${isSelected ? '#0f0' : '#aaa'}; margin-top: 8px; border-radius: 2px;`;
         
         let summary = route.legs?.[0]?.summary || `Trasa ${index + 1}`;
         btn.innerHTML = `<strong>${summary}</strong><br/>Vzdálenost: ${dist} km | Čas: ${eta} min`;
         
         btn.onclick = async () => {
             activeRouteIndex = index;
+            altsContainer.style.display = 'none'; // Schovat okno ihned po výběru
             await applySelectedRoute();
             renderAlternativesUI();
         };
         altsContainer.appendChild(btn);
     });
 }
+
+document.getElementById('btn-map-alts').addEventListener('click', () => {
+    const panel = document.getElementById('route-alternatives');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
 
 // --- Service Worker Registrace (Offline podpora & PWA) ---
 if ('serviceWorker' in navigator) {

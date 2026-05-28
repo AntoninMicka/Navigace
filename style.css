@@ -624,9 +624,58 @@ button:hover {
     background: rgba(0, 255, 0, 0.2);
 }
 
+/* Plovoucí ovládací prvky mapy (Vlevo dole) */
+#map-floating-controls {
+    position: absolute;
+    left: 15px;
+    bottom: 20px;
+    z-index: 50;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 10px;
+    pointer-events: none;
+    transition: bottom 0.3s ease;
+}
+
+.map-float-btn {
+    width: 44px;
+    height: 44px;
+    background: rgba(0, 15, 0, 0.85);
+    border: 1px solid #00ff00;
+    color: #00ff00;
+    border-radius: 4px;
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+    backdrop-filter: blur(4px);
+}
+
+.floating-panel {
+    background: rgba(0, 10, 0, 0.9);
+    border: 1px solid #00ff00;
+    padding: 10px;
+    pointer-events: auto;
+    min-width: 200px;
+    border-radius: 4px;
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.2);
+}
+
 /* HUD Třída - zrcadlení horizontálně pro čelní sklo auta */
 .hud-mode {
     transform: scaleX(-1);
+}
+
+@media (max-width: 767px) {
+    #map-floating-controls {
+        bottom: 74px; /* Zvednutí nad spodní mobilní menu (54px) */
+    }
+    body.has-route #map-floating-controls {
+        bottom: 154px; /* Menu + výškový profil */
+    }
 }
 
 /* Desktop: Velký displej s plovoucími HUD widgety */
@@ -634,6 +683,11 @@ button:hover {
     #app-container {
         display: block; /* Mapa je na pozadí přes celý displej */
         padding-bottom: 0;
+    }
+
+    /* Pozice plovoucích tlačítek (Desktop i mobil musí řešit výškový profil) */
+    body.has-route #map-floating-controls {
+        bottom: 100px; /* Zvednutí nad výškový profil (80px) + 20px mezera */
     }
 
     #map {
