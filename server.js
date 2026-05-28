@@ -215,19 +215,33 @@ app.get('/api/pois', async (req, res) => {
 
     if (now - lastPoisFetch > POIS_CACHE_TTL || poisCache.length === 0) {
         try {
-            const overpassQuery = `[out:json][timeout:25];node["amenity"="fuel"];out;`;
+            // Sloučený dotaz pro Palivo, Nemocnice a Policii v ohraničení ČR
+            const overpassQuery = `[out:json][timeout:25];(node["amenity"="fuel"];node["amenity"="hospital"];node["amenity"="police"];);out tags;`;
             const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
             const response = await fetch(overpassUrl, { headers: { 'User-Agent': 'TacticalNav/1.0 (Node.js backend)' } });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             if (data && data.elements) {
-                poisCache = data.elements.map(node => ({
-                    id: `osm-poi-${node.id}`,
-                    type: 'fuel',
-                    lat: node.lat,
-                    lng: node.lon,
-                    description: 'Týl (Palivo)'
-                }));
+                poisCache = data.elements.map(node => {
+                    const amenity = node.tags ? node.tags.amenity : 'fuel';
+                    let type = 'fuel';
+                    let description = 'Týl (Palivo)';
+                    
+                    if (amenity === 'hospital') {
+                        type = 'medical';
+                        description = 'Medevac (Nemocnice)';
+                    } else if (amenity === 'police') {
+                        type = 'police';
+                        description = 'Sbor (Policie)';
+                    }
+                    return {
+                        id: `osm-poi-${node.id}`,
+                        type: type,
+                        lat: node.lat,
+                        lng: node.lon,
+                        description: description
+                    };
+                });
                 lastPoisFetch = now;
                 console.log(`[SYS] Stáhnuto ${poisCache.length} POI z OSM.`);
             }
