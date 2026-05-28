@@ -170,11 +170,16 @@ app.get('/api/radars', async (req, res) => {
         try {
             // Správná syntaxe + Bounding box pro ČR (jih, západ, sever, východ)
             const overpassQuery = `[out:json][timeout:25];node["highway"="speed_camera"](48.55,12.09,51.06,18.86);out;`;
-            const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
+            const overpassUrl = `https://overpass-api.de/api/interpreter`;
             
             const response = await fetch(overpassUrl, {
-                // Overpass API vyžaduje specifičtější User-Agent, aby neblokoval generické requesty
-                headers: { 'User-Agent': 'TacticalNav/1.0 (Node.js backend)' }
+                method: 'POST',
+                body: "data=" + encodeURIComponent(overpassQuery),
+                headers: { 
+                    'User-Agent': 'TacticalNav/1.0 (Node.js backend)',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json'
+                }
             });
             
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -215,13 +220,38 @@ app.get('/api/pois', async (req, res) => {
 
     if (now - lastPoisFetch > POIS_CACHE_TTL || poisCache.length === 0) {
         try {
-            // Sloučený dotaz pro Palivo, Nemocnice a Policii v ohraničení ČR
-            const overpassQuery = `[out:json][timeout:25][bbox:48.55,12.09,51.06,18.86];(node["amenity"="fuel"];node["amenity"="hospital"];node["amenity"="police"];);out tags;`;
-            const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
-            const response = await fetch(overpassUrl, { headers: { 'User-Agent': 'TacticalNav/1.0 (Node.js backend)' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
+            // Sloučený dotaz pro Palivo, Nemocnice a Policii v ohraničení ČR.
+            // Použijeme 'nwr' (node/way/relation), protože benzínky a nemocnice se často kreslí jako plochy (budovy). 'out center' z nich udělá souřadnicové body.
+            const overpassQuery = `[out:json][timeout:120][bbox:48.55,12.09,51.06,18.86];(nwr["amenity"="fuel"];nwr["amenity"="hospital"];nwr["amenity"="police"];);out center;`;
+            const overpassUrl = `https://overpass-api.de/api/interpreter`;
+            const response = await fetch(overpassUrl, {
+                method: 'POST',
+                body: "data=" + encodeURIComponent(overpassQuery),
+                headers: { 
+                    'User-Agent': 'TacticalNav/1.0 (Node.js backend)',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json'
+                }
+            });
+            
+            const rawText = await response.text();
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status} - ${rawText.substring(0, 300)}`);
+            }
+            
+            let data;
+            try {
+                data = JSON.parse(rawText);
+            } catch (e) {
+                throw new Error(`Odpověď není platný JSON. Surový text: ${rawText.substring(0, 500)}`);
+            }
+            
             if (data && data.elements) {
+                if (data.elements.length === 0) {
+                    console.log(`[SYS] Overpass API nevrátilo žádná POI data. Detailní výpis odpovědi:`);
+                    console.log(JSON.stringify(data, null, 2));
+                    console.log(`[DEBUG] Použitý dotaz: ${overpassQuery}`);
+                }
                 poisCache = data.elements.map(node => {
                     const amenity = node.tags ? node.tags.amenity : 'fuel';
                     let type = 'fuel';
@@ -237,11 +267,11 @@ app.get('/api/pois', async (req, res) => {
                     return {
                         id: `osm-poi-${node.id}`,
                         type: type,
-                        lat: node.lat,
-                        lng: node.lon,
+                        lat: node.lat || (node.center && node.center.lat),
+                        lng: node.lon || (node.center && node.center.lon),
                         description: description
                     };
-                });
+                }).filter(poi => poi.lat && poi.lng); // Vyřadit cokoli bez GPS pozice
                 lastPoisFetch = now;
                 console.log(`[SYS] Stáhnuto ${poisCache.length} POI z OSM.`);
             }
