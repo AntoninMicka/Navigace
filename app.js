@@ -575,6 +575,19 @@ function updateNavigationButtons() {
     startBtn.innerText = isNavigating ? 'NAV ACTIVE' : 'START NAV';
 }
 
+// --- Hack pro udržení PWA na pozadí (Zabránění uspání při zhasnutém displeji) ---
+// Minimalistický tichý WAV soubor (1 vzorek) v Base64
+const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+silentAudio.loop = true;
+
+function playBackgroundAudio() {
+    silentAudio.play().catch(() => sysLog('WARN: Background Audio Hack se nespustil.'));
+}
+
+function stopBackgroundAudio() {
+    silentAudio.pause();
+}
+
 function focusCurrentPosition(duration = 500) {
     if (!hasLocation) {
         sysLog('WARN: Pozice zatím není známa.');
@@ -603,6 +616,7 @@ function startNavigation() {
     }
 
     requestCompassAccess();
+    playBackgroundAudio(); // Spuštění tichého zvuku pro oklamání OS při navigaci
     isNavigating = true;
     isTracking = true;
     updateNavigationButtons();
@@ -617,6 +631,7 @@ function stopNavigation() {
     isNavigating = false;
     isTracking = false;
     updateNavigationButtons();
+    stopBackgroundAudio(); // Konec tichého audia
     map.easeTo({ pitch: 0, duration: 500 });
     sysLog(routePreviewReady ? 'Navigace zastavena, trasa zůstává v preview.' : 'Navigace zastavena.', { speak: true });
 }
@@ -962,6 +977,11 @@ document.addEventListener('visibilitychange', () => {
         // Vynutit okamžitou aktualizaci polohy po probuzení
         if ('geolocation' in navigator) {
             navigator.geolocation.getCurrentPosition(handlePositionSuccess, handlePositionError, geoOptions);
+        }
+        // Obnova Socket.io spojení (BFT), pokud bylo systémem přesto přerušeno
+        if (socket && !socket.connected) {
+            sysLog('Obnovuji BFT spojení...');
+            socket.connect();
         }
     }
 });
