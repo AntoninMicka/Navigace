@@ -569,11 +569,13 @@ function setDestinationMarker(destLng, destLat) {
 function updateNavigationButtons() {
     const startBtn = document.getElementById('btn-start-nav');
     const stopBtn = document.getElementById('btn-stop-nav');
+    const clearBtn = document.getElementById('btn-clear-route');
 
     if (!startBtn || !stopBtn) return;
 
     startBtn.disabled = !routePreviewReady || isNavigating;
     stopBtn.disabled = !isNavigating;
+    if (clearBtn) clearBtn.disabled = !routePreviewReady;
     startBtn.innerText = isNavigating ? 'NAV ACTIVE' : 'START NAV';
 }
 
@@ -636,6 +638,48 @@ function stopNavigation() {
     stopBackgroundAudio(); // Konec tichého audia
     map.easeTo({ pitch: 0, duration: 500 });
     sysLog(routePreviewReady ? 'Navigace zastavena, trasa zůstává v preview.' : 'Navigace zastavena.', { speak: true });
+}
+
+function clearRoute() {
+    isNavigating = false;
+    isTracking = false;
+    routePreviewReady = false;
+    currentRouteCoords = [];
+    currentRouteSteps = [];
+    currentDestLng = null;
+    currentDestLat = null;
+    availableRoutes = [];
+    activeRouteIndex = 0;
+
+    // Smazání cesty z map
+    if (map.getSource('route')) {
+        map.getSource('route').setData({ type: 'FeatureCollection', features: [] });
+    }
+    if (overviewMap && overviewMap.getSource('route')) {
+        overviewMap.getSource('route').setData({ type: 'FeatureCollection', features: [] });
+    }
+
+    // Smazání cílových bodů
+    if (destinationMarker) {
+        destinationMarker.remove();
+        destinationMarker = null;
+    }
+    if (overviewDestinationMarker) {
+        overviewDestinationMarker.remove();
+        overviewDestinationMarker = null;
+    }
+
+    updateNavigationButtons();
+    updateNavStepsUI(currentLng, currentLat);
+    renderElevationProfile(); // Vypne výškový profil
+    updateHeaderInfo(currentLng !== null ? {lng: currentLng, lat: currentLat} : null, null); // Reset záhlaví
+
+    const altsContainer = document.getElementById('route-alternatives');
+    if (altsContainer) altsContainer.style.display = 'none';
+
+    stopBackgroundAudio();
+    map.easeTo({ pitch: 0, duration: 500 });
+    sysLog('Trasa zrušena.', { speak: true });
 }
 
 async function renderRoute(routeGeoJSON) {
@@ -869,6 +913,16 @@ function handlePositionSuccess(position) {
 
     updateDirectionVectors();
     
+    // --- Kontrola dojezdu do cíle ---
+    if (isNavigating && currentDestLng !== null && currentDestLat !== null) {
+        const distToDest = new maplibregl.LngLat(lng, lat).distanceTo(new maplibregl.LngLat(currentDestLng, currentDestLat));
+        if (distToDest < 40) { // Cíl do 40 metrů
+            sysLog('Cíl dosažen. Navigace ukončena.', { speak: true, priority: true });
+            clearRoute();
+            return; // Dál nepočítáme sjetí z trasy
+        }
+    }
+
     // --- Kontrola sjetí z trasy (Off-route detection) ---
     if (isNavigating && currentRouteCoords.length > 0) {
         let minMeters = Infinity;
@@ -1602,6 +1656,9 @@ setInterval(checkProximity, 2500);
 
 document.getElementById('btn-start-nav').addEventListener('click', startNavigation);
 document.getElementById('btn-stop-nav').addEventListener('click', stopNavigation);
+if (document.getElementById('btn-clear-route')) {
+    document.getElementById('btn-clear-route').addEventListener('click', clearRoute);
+}
 
 const assetTypeSelect = document.getElementById('asset-type');
 if (!isAdminView) {
@@ -1700,9 +1757,8 @@ setInterval(() => {
 }, 1000);
 
 function updateHeaderInfo(startCoords, destCoords) {
-    if (!startCoords || !destCoords) return;
-    const startStr = formatMGRS(startCoords.lng, startCoords.lat);
-    const destStr = formatMGRS(destCoords.lng, destCoords.lat);
+    const startStr = startCoords ? formatMGRS(startCoords.lng, startCoords.lat) : 'N/A';
+    const destStr = destCoords ? formatMGRS(destCoords.lng, destCoords.lat) : 'N/A';
     document.getElementById('header-start').innerText = `START: ${startStr}`;
     document.getElementById('header-dest').innerText = `CÍL: ${destStr}`;
 }
