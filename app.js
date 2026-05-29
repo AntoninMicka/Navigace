@@ -1675,6 +1675,16 @@ const ttsEnabled = 'speechSynthesis' in window;
 let speechQueue = [];
 let isSpeaking = false;
 
+// Voice Pack Konfigurace
+let currentVoiceProfile = localStorage.getItem('tacnav_voice') || 'nato';
+
+const voiceConfigs = {
+    standard: { pitch: 1.0, rate: 1.0, sfx: null },
+    nato: { pitch: 1.0, rate: 1.15, sfx: 'squelch' },    // Mluví trochu rychleji + Šum vysílačky
+    awacs: { pitch: 1.2, rate: 1.25, sfx: 'awacs' },      // Vyšší tón + Datalinkové pípnutí
+    cyberpunk: { pitch: 0.5, rate: 0.85, sfx: 'cyber' }   // Velmi hluboký/strojový pomalý tón + Glitch
+};
+
 // Povolení audia při prvním kliknutí kamkoliv do aplikace (prohlížeče blokují autoplay)
 document.body.addEventListener('click', () => {
     if (audioContext && audioContext.state === 'suspended') {
@@ -1706,29 +1716,105 @@ function playBeep(type = 'notice') {
     oscillator.stop(audioContext.currentTime + 0.4);
 }
 
+// Syntetizátor speciálních efektů (SFX) generovaných v reálném čase (žádné externí soubory!)
+function playSFX(type) {
+    if (!audioContext || audioContext.state !== 'running') return;
+    const gainNode = audioContext.createGain();
+    gainNode.connect(audioContext.destination);
+
+    if (type === 'squelch') {
+        // NATO: Šum zmáčknutí PTT tlačítka vysílačky (White noise burst)
+        const bufferSize = audioContext.sampleRate * 0.15; // 150ms
+        const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        
+        const noise = audioContext.createBufferSource();
+        noise.buffer = buffer;
+        
+        const filter = audioContext.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 1200; // Frekvence radiostanice
+        
+        noise.connect(filter);
+        filter.connect(gainNode);
+        
+        gainNode.gain.setValueAtTime(0.7, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+        noise.start();
+    } 
+    else if (type === 'cyber') {
+        // CYBERPUNK: Temný robotický / elektrický Glitch alert
+        const osc1 = audioContext.createOscillator();
+        const osc2 = audioContext.createOscillator();
+        osc1.type = 'square';
+        osc2.type = 'sawtooth';
+        osc1.frequency.setValueAtTime(100, audioContext.currentTime);
+        osc1.frequency.exponentialRampToValueAtTime(40, audioContext.currentTime + 0.3);
+        osc2.frequency.setValueAtTime(105, audioContext.currentTime);
+        osc2.frequency.exponentialRampToValueAtTime(42, audioContext.currentTime + 0.3);
+        
+        osc1.connect(gainNode);
+        osc2.connect(gainNode);
+        gainNode.gain.setValueAtTime(0.4, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        osc1.start(); osc2.start();
+        osc1.stop(audioContext.currentTime + 0.3); osc2.stop(audioContext.currentTime + 0.3);
+    }
+    else if (type === 'awacs') {
+        // AWACS: Digitální vysoké datalink "ping pípnutí"
+        const osc = audioContext.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1800, audioContext.currentTime);
+        osc.connect(gainNode);
+        
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.02);
+        gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.08);
+        gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.12);
+        gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.2);
+        
+        osc.start();
+        osc.stop(audioContext.currentTime + 0.25);
+    }
+}
+
 function processSpeechQueue() {
     if (isSpeaking || speechQueue.length === 0 || !ttsEnabled) return;
     isSpeaking = true;
     const textToSpeak = speechQueue.shift();
-    const utterance = new SpeechSynthesisUtterance(textToSpeak);
-    utterance.lang = 'cs-CZ';
-    utterance.rate = 1.2;
-    utterance.onend = () => {
-        isSpeaking = false;
-        setTimeout(processSpeechQueue, 150);
-    };
-    utterance.onerror = () => {
-        isSpeaking = false;
-        processSpeechQueue();
-    };
-    window.speechSynthesis.speak(utterance);
+    
+    const config = voiceConfigs[currentVoiceProfile] || voiceConfigs.standard;
+    if (config.sfx) playSFX(config.sfx); // Zahrát intro efekt před hlasem
+
+    setTimeout(() => {
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        utterance.lang = 'cs-CZ';
+        utterance.rate = config.rate;
+        utterance.pitch = config.pitch;
+        
+        utterance.onend = () => {
+            if (config.sfx === 'squelch') playSFX('squelch'); // Uzavření relace rádiovým cvaknutím
+            setTimeout(() => { isSpeaking = false; processSpeechQueue(); }, 150);
+        };
+        utterance.onerror = () => {
+            isSpeaking = false;
+            processSpeechQueue();
+        };
+        window.speechSynthesis.speak(utterance);
+    }, config.sfx ? 300 : 0); // Počkat zlomky sekundy na dokreslení SFX intra
 }
 
 function speak(text, priority = false) {
-    if (!ttsEnabled) {
-        playBeep(priority ? 'alert' : 'notice');
+    const config = voiceConfigs[currentVoiceProfile] || voiceConfigs.standard;
+    
+    if (!ttsEnabled) { // Fallback, pokud není TTS vůbec dostupné
+        if (config.sfx) playSFX(config.sfx);
+        else playBeep(priority ? 'alert' : 'notice');
         return;
     }
+    
     if (priority) {
         window.speechSynthesis.cancel();
         isSpeaking = false;
@@ -1952,6 +2038,30 @@ assetTypeSelect.addEventListener('change', (e) => {
     setAssetType(e.target.value);
     e.target.value = currentAssetType;
 });
+
+// --- UI pro výběr Audio Profilu ---
+const voiceSelect = document.createElement('select');
+voiceSelect.id = 'voice-type';
+voiceSelect.innerHTML = `
+    <option value="standard">Standard (Čistý hlas)</option>
+    <option value="nato">NATO Commander (Radiostanice)</option>
+    <option value="awacs">AWACS Operator (Datalink)</option>
+    <option value="cyberpunk">Cyberpunk AI (Glitch)</option>
+`;
+voiceSelect.value = currentVoiceProfile;
+voiceSelect.addEventListener('change', (e) => {
+    currentVoiceProfile = e.target.value;
+    localStorage.setItem('tacnav_voice', currentVoiceProfile);
+    speak(`Aktivován audio profil.`); // Testovací hláška při přepnutí
+});
+
+if (assetTypeSelect && assetTypeSelect.parentNode) {
+    const label = document.createElement('label');
+    label.className = 'field-label';
+    label.innerText = 'AUDIO PROFIL';
+    assetTypeSelect.parentNode.insertBefore(label, assetTypeSelect.nextSibling);
+    assetTypeSelect.parentNode.insertBefore(voiceSelect, label.nextSibling);
+}
 
 // Skrývání logů
 const logToggleBtn = document.getElementById('btn-log-toggle');

@@ -512,7 +512,8 @@ h3 {
     font-size: 0.75rem;
 }
 
-#asset-type {
+#asset-type,
+#voice-type {
     width: 100%;
     margin-bottom: 14px;
     background: rgba(0, 50, 0, 0.3);
