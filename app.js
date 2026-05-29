@@ -1479,7 +1479,16 @@ async function fetchAndRenderEvents() {
                     .setLngLat([evt.lng, evt.lat])
                     .addTo(map);
                 
-                eventMarkers[evt.id] = { marker, el, userData: evt };
+                let overviewMarker = null;
+                if (overviewMap) {
+                    const elOverview = document.createElement('div');
+                    elOverview.style.cssText = 'width:14px; height:14px; background:#ff3333; border-radius:50%; border:2px solid #000; box-shadow:0 0 10px #ff3333;';
+                    overviewMarker = new maplibregl.Marker({ element: elOverview, anchor: 'center' })
+                        .setLngLat([evt.lng, evt.lat])
+                        .addTo(overviewMap);
+                }
+
+                eventMarkers[evt.id] = { marker, overviewMarker, el, userData: evt };
             }
         });
         
@@ -1570,7 +1579,16 @@ async function fetchAndRenderRadars() {
                     .setLngLat([rad.lng, rad.lat])
                     .addTo(map);
                 
-                eventMarkers[rad.id] = { marker, el, userData: rad };
+                let overviewMarker = null;
+                if (overviewMap) {
+                    const elOverview = document.createElement('div');
+                    elOverview.style.cssText = 'width:14px; height:14px; background:#ffcc00; border-radius:50%; border:2px solid #000; box-shadow:0 0 10px #ffcc00;';
+                    overviewMarker = new maplibregl.Marker({ element: elOverview, anchor: 'center' })
+                        .setLngLat([rad.lng, rad.lat])
+                        .addTo(overviewMap);
+                }
+
+                eventMarkers[rad.id] = { marker, overviewMarker, el, userData: rad };
             }
         });
         
@@ -1904,6 +1922,13 @@ function checkProximity() {
             const description = threat.marker.getElement().querySelector('.app6-amp-h')?.innerText || 'hrozba';
             sysLog(`ALERT: ${description} (${Math.round(distance)}m)`, { speak: true, priority: true });
             alertedEvents.add(threatId);
+
+                // Vizuální výstraha (červené problikávání obrazovky)
+                const crt = document.getElementById('crt-overlay');
+                if (crt) {
+                    crt.classList.add('threat-alert-active');
+                    setTimeout(() => crt.classList.remove('threat-alert-active'), 5000); // 5 sekund blikání
+                }
         }
     });
 }
