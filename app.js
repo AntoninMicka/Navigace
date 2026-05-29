@@ -842,7 +842,10 @@ async function applySelectedRoute() {
     await renderRoute(routeGeoJSON);
 
     if (leg && leg.steps) {
-        leg.steps.forEach(step => delete step.announced);
+        leg.steps.forEach((step, index) => {
+            delete step.announced;
+            step.passed = (index === 0); // První krok se bere automaticky jako passed
+        });
         currentRouteSteps = leg.steps;
     } else {
         currentRouteSteps = [];
@@ -1000,30 +1003,62 @@ function handlePositionSuccess(position) {
 
 
 
+    // --- Aktualizace průchodu trasou (Maneuvers) ---
+    if (isNavigating && currentRouteSteps.length > 0) {
+        let searchStartIndex = 0;
+        for (let i = 0; i < currentRouteSteps.length; i++) {
+            if (currentRouteSteps[i].passed) searchStartIndex = i;
+        }
+
+        let bestStepIndex = searchStartIndex;
+        let minStepDist = Infinity;
+        const maxSearch = Math.min(searchStartIndex + 2, currentRouteSteps.length - 1);
+
+        for (let i = searchStartIndex; i <= maxSearch; i++) {
+            const step = currentRouteSteps[i];
+            if (!step.geometry || !step.geometry.coordinates) continue;
+            
+            const coords = step.geometry.coordinates;
+            for (let j = 0; j < coords.length - 1; j++) {
+                let d = distToSegmentInMeters([lng, lat], coords[j], coords[j+1]);
+                if (d < minStepDist) {
+                    minStepDist = d;
+                    bestStepIndex = i;
+                }
+            }
+        }
+
+        if (bestStepIndex > searchStartIndex) {
+            const newStep = currentRouteSteps[bestStepIndex];
+            const maneuverPoint = newStep.maneuver.location;
+            const distToManeuver = new maplibregl.LngLat(lng, lat).distanceTo(new maplibregl.LngLat(maneuverPoint[0], maneuverPoint[1]));
+            
+            // Předejít falešným skokům na křižovatkách (počkáme, až projedeme manévr o cca 15 metrů)
+            if (distToManeuver > 15 && bestStepIndex < currentRouteSteps.length - 1) {
+                for (let i = searchStartIndex; i <= bestStepIndex; i++) {
+                    currentRouteSteps[i].passed = true;
+                }
+            }
+        }
+    }
+
     // --- UI a Hlášení Navigace ---
     if (isNavigating) {
         updateNavStepsUI(lng, lat);
 
         // Najdeme nejbližší budoucí krok na trase pro hlasové hlášení
-        let closestStepForAnnounce = null;
-        let minDistanceForAnnounce = Infinity;
+        const upcomingStep = currentRouteSteps.find(s => !s.passed);
 
-        for (const step of currentRouteSteps) {
-            if (step.passed) continue;
-            const maneuverPoint = step.maneuver.location;
+        if (upcomingStep && !upcomingStep.announced) {
+            const maneuverPoint = upcomingStep.maneuver.location;
             const distance = new maplibregl.LngLat(lng, lat).distanceTo(new maplibregl.LngLat(maneuverPoint[0], maneuverPoint[1]));
-            if (distance < minDistanceForAnnounce) {
-                minDistanceForAnnounce = distance;
-                closestStepForAnnounce = step;
+            
+            if (distance < 300) {
+                const instruction = formatManeuver(upcomingStep);
+                sysLog(`NAV: ${instruction} (${Math.round(distance)}m)`);
+                speak(instruction, true);
+                upcomingStep.announced = true;
             }
-        }
-
-        if (closestStepForAnnounce && minDistanceForAnnounce < 300 && !closestStepForAnnounce.announced) {
-            const stepToAnnounce = closestStepForAnnounce;
-            const instruction = formatManeuver(stepToAnnounce);
-            sysLog(`NAV: ${instruction} (${Math.round(minDistanceForAnnounce)}m)`);
-            speak(instruction, true);
-            stepToAnnounce.announced = true;
         }
     } else {
         // Pokud nenavigujeme, ale je připravená trasa, aktualizujeme UI
@@ -1997,16 +2032,19 @@ function formatManeuver(step) {
     const modifier = step.maneuver.modifier || '';
     let instruction = '';
     switch (type) {
-        case 'turn': case 'fork': case 'off ramp': case 'on ramp':
+            case 'turn': case 'fork': case 'off ramp': case 'on ramp': case 'end of road': case 'merge':
             if (modifier.includes('left')) instruction = 'Odbočte vlevo';
             else if (modifier.includes('right')) instruction = 'Odbočte vpravo';
             else if (modifier.includes('straight')) instruction = 'Jeďte rovně';
+                else instruction = 'Změna směru jízdy';
             break;
         case 'roundabout':
             instruction = `Na kruhovém objezdu sjeďte ${step.maneuver.exit || 1}. výjezdem`;
             break;
-        case 'depart': instruction = `Vyjeďte směr ${step.name}`; break;
-        case 'arrive': instruction = 'Dorazili jste do cíle.'; break;
+            case 'depart': instruction = `Vyjeďte směr ${step.name || 'po trase'}`; break;
+            case 'arrive': instruction = 'Dorazili jste do cíle'; break;
+            case 'continue': instruction = 'Pokračujte rovně'; break;
+            default: instruction = 'Změna směru jízdy'; break;
     }
     return instruction;
 }
