@@ -409,8 +409,9 @@ io.on('connection', (socket) => {
         if (!bftPois[safeRoom]) bftPois[safeRoom] = {};
         if (bftRooms[safeRoom]) bftRooms[safeRoom].lastActive = Date.now();
         
-        bftUsers[socket.id] = { room: safeRoom, data: { id: socket.id, alias: alias || '' } };
-        console.log(`[BFT] Uživatel ${alias || socket.id} vstoupil do skupiny: ${safeRoom}`);
+        const safeAlias = (alias || '').trim().toUpperCase();
+        bftUsers[socket.id] = { room: safeRoom, data: { id: socket.id, alias: safeAlias } };
+        console.log(`[BFT] Uživatel ${safeAlias || socket.id} vstoupil do skupiny: ${safeRoom}`);
         
         // Odeslání existujících POI z dané místnosti
         socket.emit('bft_pois_update', Object.values(bftPois[safeRoom]));

@@ -262,6 +262,15 @@ if (socket) {
         bftSharedPois = serverPois;
         renderPOIs();
     });
+
+    socket.on('bft_error', (msg) => {
+        sysLog(`BFT ODEPŘENO: ${msg}`, { speak: true, priority: true });
+        document.getElementById('status').innerText = 'BFT DENIED';
+        document.getElementById('status').style.color = '#ff3333';
+        alert(`BFT Přístup odepřen:\n${msg}`);
+        localStorage.setItem('tacnav_bft_group', 'PUBLIC');
+        localStorage.setItem('tacnav_bft_password', '');
+ });
     
     socket.on('bft_update', (users) => {
         const activeIds = new Set(users.map(u => u.id));
@@ -2145,7 +2154,7 @@ const bftGroupInput = document.createElement('input');
 bftGroupInput.id = 'bft-group';
 bftGroupInput.type = 'text';
 bftGroupInput.value = currentBftGroup;
-bftGroupInput.style.cssText = 'width: 100%; margin-bottom: 14px; background: rgba(0, 50, 0, 0.3); border: 1px solid #00ff00; color: #00ff00; padding: 6px; font-family: inherit; box-shadow: inset 0 0 5px rgba(0, 255, 0, 0.2); backdrop-filter: blur(4px);';
+bftGroupInput.style.cssText = 'width: 100%; margin-bottom: 14px; background: rgba(0, 50, 0, 0.3); border: 1px solid #00ff00; color: #00ff00; padding: 6px; font-family: inherit; box-shadow: inset 0 0 5px rgba(0, 255, 0, 0.2); backdrop-filter: blur(4px); text-transform: uppercase;';
 
 const bftPasswordInput = document.createElement('input');
 bftPasswordInput.id = 'bft-password';
@@ -2159,7 +2168,7 @@ bftAliasInput.id = 'bft-alias';
 bftAliasInput.type = 'text';
 bftAliasInput.placeholder = 'Vaše volačka';
 bftAliasInput.value = currentBftAlias;
-bftAliasInput.style.cssText = 'width: 100%; margin-bottom: 14px; background: rgba(0, 50, 0, 0.3); border: 1px solid #00ff00; color: #00ff00; padding: 6px; font-family: inherit; box-shadow: inset 0 0 5px rgba(0, 255, 0, 0.2); backdrop-filter: blur(4px);';
+bftAliasInput.style.cssText = 'width: 100%; margin-bottom: 14px; background: rgba(0, 50, 0, 0.3); border: 1px solid #00ff00; color: #00ff00; padding: 6px; font-family: inherit; box-shadow: inset 0 0 5px rgba(0, 255, 0, 0.2); backdrop-filter: blur(4px); text-transform: uppercase;';
 
 const bftBtnContainer = document.createElement('div');
 bftBtnContainer.style.cssText = 'display: flex; gap: 8px; margin-bottom: 14px;';
@@ -2178,9 +2187,9 @@ bftBtnContainer.appendChild(bftJoinBtn);
 bftBtnContainer.appendChild(bftLeaveBtn);
 
 bftJoinBtn.addEventListener('click', () => {
-    localStorage.setItem('tacnav_bft_group', bftGroupInput.value.trim() || 'PUBLIC');
+    localStorage.setItem('tacnav_bft_group', (bftGroupInput.value.trim() || 'PUBLIC').toUpperCase());
     localStorage.setItem('tacnav_bft_password', bftPasswordInput.value.trim());
-    localStorage.setItem('tacnav_bft_alias', bftAliasInput.value.trim());
+    localStorage.setItem('tacnav_bft_alias', bftAliasInput.value.trim().toUpperCase());
     sysLog('Aplikuji nastavení BFT...');
     setTimeout(() => window.location.reload(), 800);
 });
