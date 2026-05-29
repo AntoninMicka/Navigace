@@ -1248,14 +1248,38 @@ function renderPOIs() {
         const isLocal = localPois.some(p => p.id === poi.id);
         const dotColor = isLocal ? '#ffcc00' : '#00a6ff'; // Žlutá = moje, Modrá = ze sítě (BFT)
 
+        let iconClass = 'app6-icon-flag';
+        let iconText = 'WPT';
+        const nameLower = poi.name.toLowerCase();
+        
+        if (nameLower.includes('domů') || nameLower.includes('doma') || nameLower.includes('home')) {
+            iconClass = 'app6-icon-home';
+            iconText = 'HOME';
+        } else if (nameLower.includes('prác') || nameLower.includes('work') || nameLower.includes('office')) {
+            iconClass = 'app6-icon-work';
+            iconText = 'WORK';
+        }
+
         // 1. Vykreslení do Mapy
         const el = document.createElement('div');
-        el.style.width = '14px'; el.style.height = '14px';
-        el.style.backgroundColor = dotColor; el.style.borderRadius = '50%';
-        el.style.border = '1px solid #000'; el.title = poi.name;
+        el.className = `app6-marker ${iconClass}`;
+        el.style.cursor = 'pointer';
+        el.innerHTML = `
+            <div class="app6-symbol">
+                <div class="app6-neutral-frame" style="border-color: ${dotColor};">
+                    <div class="app6-asset-icon" style="color: ${dotColor};"></div>
+                </div>
+            </div>
+            <div class="app6-amplifiers">
+                <div class="app6-amp-right" style="color: ${dotColor};">
+                    <div class="app6-amp-t">${iconText}</div>
+                    <div class="app6-amp-h">${poi.name}</div>
+                </div>
+            </div>
+        `;
         
         el.addEventListener('click', (e) => { e.stopPropagation(); calculateRoute(poi.lng, poi.lat); setMobileScreen('map'); });
-        const marker = new maplibregl.Marker({ element: el }).setLngLat([poi.lng, poi.lat]).addTo(map);
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([poi.lng, poi.lat]).addTo(map);
         customPoiMarkers.push(marker);
 
         // 2. Vykreslení do Seznamu (Levý panel)
