@@ -664,7 +664,7 @@ function stopNavigation() {
 
 function clearRoute() {
     isNavigating = false;
-    isTracking = false;
+    isTracking = true; // Zůstaneme v režimu sledování polohy i po zrušení navigace (2D pohled)
     routePreviewReady = false;
     currentRouteCoords = [];
     currentRouteSteps = [];
@@ -862,7 +862,7 @@ function handlePositionSuccess(position) {
     }
 
     // Ignorovat velké odskoky GPS (tzv. ustřelení), pokud už máme nějakou polohu zaměřenou.
-    if (hasLocation && accuracy > 60) {
+    if (hasLocation && accuracy > 500) { // Zvýšeno ze 60m na 500m, 60m je v reálu příliš přísné a zasekávalo pozici.
         return;
     }
 
@@ -917,17 +917,18 @@ function handlePositionSuccess(position) {
     if (isFirstLocation) {
         map.jumpTo({ center: [lng, lat], zoom: 16 });
         isFirstLocation = false;
+        isTracking = true; // Auto-track aktivní rovnou po prvním zaměření
         sysLog('Poloha zaměřena.');
-    } else if (isNavigating && isTracking) {
+    } else if (isTracking) {
         const camera = {
             center: [lng, lat],
             zoom: Math.max(map.getZoom(), 16),
-            pitch: 45,
+            pitch: isNavigating ? 45 : 0, // Nakloněná kamera 45° jen u navigace, jinak 2D placka
             duration: 250,
             easing: (t) => t
         };
 
-        if (activeHeading !== null) {
+        if (isNavigating && activeHeading !== null) { // Otáčet s kompasem jen během navigace
             camera.bearing = activeHeading;
         }
 
@@ -1126,9 +1127,7 @@ function createBftMarker(u) {
 function centerMap() {
     requestCompassAccess();
     if (hasLocation) {
-        if (isNavigating) {
-            isTracking = true; // Obnovit automatické sledování jen během navigace
-        }
+        isTracking = true; // Sledování aktivovat vždy (i když zrovna nenavigujeme)
         setMobileScreen('map');
         setTimeout(() => focusCurrentPosition(500), 80);
         sysLog(isNavigating ? 'Sledování obnoveno.' : 'Mapa vycentrována.');
@@ -1153,7 +1152,7 @@ document.getElementById('btn-compass').addEventListener('click', () => {
 
 // Zastavení sledování při manuálním pohybu mapou (Preview mód)
 map.on('dragstart', () => {
-    if (isNavigating && isTracking) {
+    if (isTracking) {
         isTracking = false;
         sysLog('Preview mód (sledování pozastaveno).');
     }
