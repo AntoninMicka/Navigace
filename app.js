@@ -271,6 +271,9 @@ if (socket) {
                 bftListChanged = true;
             } else {
                 bftMarkers[u.id].marker.setLngLat([u.lng, u.lat]);
+                if (bftMarkers[u.id].overviewMarker) {
+                    bftMarkers[u.id].overviewMarker.setLngLat([u.lng, u.lat]);
+                }
 
                 bftMarkers[u.id].el.querySelector('.app6-amp-z').innerText = `${u.speed || 0} km/h`;
                 bftMarkers[u.id].el.querySelector('.app6-amp-h').innerText = `HDG ${u.heading || '--'}`;
@@ -284,6 +287,12 @@ if (socket) {
                 if (currentClass !== newClass) {
                     if (currentClass) bftMarkers[u.id].el.classList.remove(currentClass);
                     bftMarkers[u.id].el.classList.add(newClass);
+                    
+                    if (bftMarkers[u.id].overviewMarker) {
+                        const overviewCurrentClass = Array.from(bftMarkers[u.id].overviewMarker.getElement().classList).find(c => c.startsWith('app6-asset-'));
+                        if (overviewCurrentClass) bftMarkers[u.id].overviewMarker.getElement().classList.remove(overviewCurrentClass);
+                        bftMarkers[u.id].overviewMarker.getElement().classList.add(newClass);
+                    }
                 }
             }
         });
@@ -703,6 +712,10 @@ function clearRoute() {
 
     stopBackgroundAudio();
     map.easeTo({ pitch: 0, duration: 500 });
+    // Přiblížit zpět a vycentrovat přehledovou mapu při zrušení trasy
+    if (overviewMap && currentLng !== null && currentLat !== null) {
+        overviewMap.easeTo({ center: [currentLng, currentLat], zoom: 14, duration: 500 });
+    }
     sysLog('Trasa zrušena.', { speak: true });
 }
 
@@ -840,6 +853,15 @@ async function applySelectedRoute() {
     renderElevationProfile(); // Update spodní grafiky
 
     document.body.classList.add('has-route');
+
+    // Úprava záběru přehledové mapy tak, aby obsahovala celou trasu
+    if (overviewMap && currentRouteCoords.length > 0) {
+        const bounds = new maplibregl.LngLatBounds(currentRouteCoords[0], currentRouteCoords[0]);
+        for (const coord of currentRouteCoords) {
+            bounds.extend(coord);
+        }
+        overviewMap.fitBounds(bounds, { padding: 30, duration: 800 });
+    }
 
     if (isNavigating) {
         setTimeout(() => focusCurrentPosition(350), 80);
@@ -1120,7 +1142,22 @@ function createBftMarker(u) {
     `;
     
     const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([u.lng, u.lat]).addTo(map);
-    bftMarkers[u.id] = { marker, el, userData: u };
+    
+    let overviewMarker = null;
+    if (overviewMap) {
+        const elOverview = document.createElement('div');
+        elOverview.className = `app6-marker app6-asset-${u.assetType || 'car'}`;
+        elOverview.innerHTML = `
+            <div class="app6-symbol" style="transform: scale(0.7); transform-origin: top left;">
+                <div class="app6-frame app6-equipment-frame">
+                    <div class="app6-asset-icon"></div>
+                </div>
+            </div>
+        `;
+        overviewMarker = new maplibregl.Marker({ element: elOverview, anchor: 'center' }).setLngLat([u.lng, u.lat]).addTo(overviewMap);
+    }
+    
+    bftMarkers[u.id] = { marker, overviewMarker, el, userData: u };
 }
 
 // Centrování mapy (Tlačítko CENTER)
@@ -1479,16 +1516,7 @@ async function fetchAndRenderEvents() {
                     .setLngLat([evt.lng, evt.lat])
                     .addTo(map);
                 
-                let overviewMarker = null;
-                if (overviewMap) {
-                    const elOverview = document.createElement('div');
-                    elOverview.style.cssText = 'width:14px; height:14px; background:#ff3333; border-radius:50%; border:2px solid #000; box-shadow:0 0 10px #ff3333;';
-                    overviewMarker = new maplibregl.Marker({ element: elOverview, anchor: 'center' })
-                        .setLngLat([evt.lng, evt.lat])
-                        .addTo(overviewMap);
-                }
-
-                eventMarkers[evt.id] = { marker, overviewMarker, el, userData: evt };
+                eventMarkers[evt.id] = { marker, el, userData: evt };
             }
         });
         
@@ -1579,16 +1607,7 @@ async function fetchAndRenderRadars() {
                     .setLngLat([rad.lng, rad.lat])
                     .addTo(map);
                 
-                let overviewMarker = null;
-                if (overviewMap) {
-                    const elOverview = document.createElement('div');
-                    elOverview.style.cssText = 'width:14px; height:14px; background:#ffcc00; border-radius:50%; border:2px solid #000; box-shadow:0 0 10px #ffcc00;';
-                    overviewMarker = new maplibregl.Marker({ element: elOverview, anchor: 'center' })
-                        .setLngLat([rad.lng, rad.lat])
-                        .addTo(overviewMap);
-                }
-
-                eventMarkers[rad.id] = { marker, overviewMarker, el, userData: rad };
+                eventMarkers[rad.id] = { marker, el, userData: rad };
             }
         });
         
