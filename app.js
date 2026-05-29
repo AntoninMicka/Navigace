@@ -1467,12 +1467,46 @@ async function fetchAndRenderEvents() {
     }
 }
 
+// --- Klientská cache pro stacionární data (Radary, POI) ---
+function getClientCache(key, maxAgeMs, lng, lat, maxDistM) {
+    const cachedStr = localStorage.getItem(key);
+    if (!cachedStr) return null;
+    try {
+        const cached = JSON.parse(cachedStr);
+        if (Date.now() - cached.timestamp > maxAgeMs) return null;
+        // Pokud se pozice změnila o více než zadaný rádius (např. 20 km), stahujeme znovu
+        if (lng !== null && lat !== null && cached.lng !== null && cached.lat !== null) {
+            const dist = new maplibregl.LngLat(lng, lat).distanceTo(new maplibregl.LngLat(cached.lng, cached.lat));
+            if (dist > maxDistM) return null;
+        }
+        return cached.data;
+    } catch (e) {
+        return null;
+    }
+}
+
+function setClientCache(key, data, lng, lat) {
+    try {
+        localStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), lng, lat, data }));
+    } catch (e) {
+        sysLog('WARN: Nelze uložit data do cache prohlížeče.');
+    }
+}
+
 // --- Radary (Nepřátelské senzory z OSM) ---
 async function fetchAndRenderRadars() {
     try {
-        const queryParams = (currentLng !== null && currentLat !== null) ? `?lng=${currentLng}&lat=${currentLat}` : '';
-        const response = await fetch(`/api/radars${queryParams}`);
-        const radars = await response.json();
+        let radars = getClientCache('tacnav_radars_cache', 24 * 60 * 60 * 1000, currentLng, currentLat, 20000); // Platnost 24h, 20km radius
+        
+        if (!radars) {
+            const queryParams = (currentLng !== null && currentLat !== null) ? `?lng=${currentLng}&lat=${currentLat}` : '';
+            const response = await fetch(`/api/radars${queryParams}`);
+            radars = await response.json();
+            if (Array.isArray(radars)) {
+                setClientCache('tacnav_radars_cache', radars, currentLng, currentLat);
+            }
+        }
+
         let newCount = 0;
 
         radars.forEach(rad => {
@@ -1528,9 +1562,16 @@ async function fetchAndRenderRadars() {
 const poiMarkers = {};
 async function fetchAndRenderPOIs() {
     try {
-        const queryParams = (currentLng !== null && currentLat !== null) ? `?lng=${currentLng}&lat=${currentLat}` : '';
-        const response = await fetch(`/api/pois${queryParams}`);
-        const pois = await response.json();
+        let pois = getClientCache('tacnav_pois_cache', 24 * 60 * 60 * 1000, currentLng, currentLat, 20000); // Platnost 24h, 20km radius
+        
+        if (!pois) {
+            const queryParams = (currentLng !== null && currentLat !== null) ? `?lng=${currentLng}&lat=${currentLat}` : '';
+            const response = await fetch(`/api/pois${queryParams}`);
+            pois = await response.json();
+            if (Array.isArray(pois)) {
+                setClientCache('tacnav_pois_cache', pois, currentLng, currentLat);
+            }
+        }
 
         pois.forEach(poi => {
             if (!poiMarkers[poi.id]) {
