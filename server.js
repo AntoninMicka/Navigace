@@ -357,42 +357,70 @@ try {
 
 // Inicializace Socket.io
 const io = new Server();
-const bftUsers = {}; // Paměť pro pozice uživatelů
-const bftPois = {}; // Paměť pro sdílené body zájmu (POI)
+const bftUsers = {}; // socket.id -> { room, data }
+const bftPois = {};  // room -> { poiId: poiData }
 
 io.on('connection', (socket) => {
     console.log(`[BFT] Uživatel připojen: ${socket.id}`);
     
-    // Odeslání existujících POI sítě novému klientovi
-    socket.emit('bft_pois_update', Object.values(bftPois));
-
-    socket.on('position_update', (data) => {
-        // Uložení/aktualizace pozice uživatele
-        bftUsers[socket.id] = { id: socket.id, ...data };
-        // Rozeslání všem připojeným klientům
-        io.emit('bft_update', Object.values(bftUsers));
+    socket.on('join_bft_group', (room) => {
+        // Opustit případné staré místnosti
+        Array.from(socket.rooms).forEach(r => {
+            if (r !== socket.id) socket.leave(r);
+        });
+        
+        const safeRoom = (room || 'PUBLIC').trim().toUpperCase();
+        socket.join(safeRoom);
+        
+        if (!bftPois[safeRoom]) bftPois[safeRoom] = {};
+        
+        bftUsers[socket.id] = { room: safeRoom, data: { id: socket.id } };
+        console.log(`[BFT] Uživatel ${socket.id} vstoupil do skupiny: ${safeRoom}`);
+        
+        // Odeslání existujících POI z dané místnosti
+        socket.emit('bft_pois_update', Object.values(bftPois[safeRoom]));
+        
+        // Rozeslat aktualizovaný seznam uživatelů všem ve skupině
+        const usersInRoom = Object.values(bftUsers).filter(u => u.room === safeRoom).map(u => u.data);
+        io.to(safeRoom).emit('bft_update', usersInRoom);
     });
 
-    // Přidání/Aktualizace POI od klienta
-    socket.on('poi_add', (poi) => {
-        if (poi && poi.id) {
-            bftPois[poi.id] = poi;
-            io.emit('bft_pois_update', Object.values(bftPois));
+    socket.on('position_update', (data) => {
+        if (bftUsers[socket.id]) {
+            const room = bftUsers[socket.id].room;
+            bftUsers[socket.id].data = { id: socket.id, ...data };
+            const usersInRoom = Object.values(bftUsers).filter(u => u.room === room).map(u => u.data);
+            io.to(room).emit('bft_update', usersInRoom);
         }
     });
 
-    // Smazání POI (kdokoli ve skupině může zrušit cíl)
+    socket.on('poi_add', (poi) => {
+        if (bftUsers[socket.id] && poi && poi.id) {
+            const room = bftUsers[socket.id].room;
+            if (!bftPois[room]) bftPois[room] = {};
+            bftPois[room][poi.id] = poi;
+            io.to(room).emit('bft_pois_update', Object.values(bftPois[room]));
+        }
+    });
+
     socket.on('poi_delete', (id) => {
-        if (id && bftPois[id]) {
-            delete bftPois[id];
-            io.emit('bft_pois_update', Object.values(bftPois));
+        if (bftUsers[socket.id] && id) {
+            const room = bftUsers[socket.id].room;
+            if (bftPois[room] && bftPois[room][id]) {
+                delete bftPois[room][id];
+                io.to(room).emit('bft_pois_update', Object.values(bftPois[room]));
+            }
         }
     });
 
     socket.on('disconnect', () => {
         console.log(`[BFT] Uživatel odpojen: ${socket.id}`);
-        delete bftUsers[socket.id];
-        io.emit('bft_update', Object.values(bftUsers)); // Aktualizace mapy po odpojení
+        if (bftUsers[socket.id]) {
+            const room = bftUsers[socket.id].room;
+            delete bftUsers[socket.id];
+            const usersInRoom = Object.values(bftUsers).filter(u => u.room === room).map(u => u.data);
+            io.to(room).emit('bft_update', usersInRoom);
+        }
     });
 });
 

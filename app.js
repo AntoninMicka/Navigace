@@ -33,9 +33,17 @@ userEl.innerHTML = `
 
 const userMarker = new maplibregl.Marker({ element: userEl, anchor: 'center' }).setLngLat([15.473, 49.817]).addTo(map);
 const APP6_ASSET_TYPES = ['person', 'bicycle', 'motorcycle', 'car', 'hq'];
-const isAdminView = new URLSearchParams(window.location.search).get('admin') === '1'
+let isAdminView = new URLSearchParams(window.location.search).get('admin') === '1'
     || localStorage.getItem('tacnav_admin') === '1';
-let currentAssetType = localStorage.getItem('tacnav_asset_type') || 'car';
+
+let currentBftGroup = localStorage.getItem('tacnav_bft_group') || 'PUBLIC';
+let isBftAdminMode = currentBftGroup.toUpperCase() === 'ADMIN' || currentBftGroup.toUpperCase().startsWith('ADMIN-');
+
+if (isBftAdminMode) {
+    isAdminView = true;
+}
+
+let currentAssetType = localStorage.getItem('tacnav_asset_type') || (isBftAdminMode ? 'hq' : 'car');
 
 let isFirstLocation = true;
 let currentLng = null;
@@ -236,6 +244,7 @@ const bftMarkers = {}; // Seznam značek ostatních uživatelů
 if (socket) {
     socket.on('connect', () => {
         sysLog(`BFT online (ID: ${socket.id.substring(0,5)})`);
+        socket.emit('join_bft_group', currentBftGroup);
         
         // Po připojení odešleme naše lokálně uložené POI na server pro ostatní
         const pois = JSON.parse(localStorage.getItem('tacnav_pois') || '[]');
@@ -1510,6 +1519,8 @@ function getMarkerOffsetAndLeaderLine(lng, lat) {
 }
 
 async function fetchAndRenderEvents() {
+    if (isBftAdminMode) return; // Admin mód vidí výhradně BFT data
+
     try {
         const queryParams = (currentLng !== null && currentLat !== null) ? `?lng=${currentLng}&lat=${currentLat}` : '';
         const response = await fetch(`/api/events${queryParams}`);
@@ -1591,6 +1602,8 @@ function setClientCache(key, data, lng, lat) {
 
 // --- Radary (Nepřátelské senzory z OSM) ---
 async function fetchAndRenderRadars() {
+    if (isBftAdminMode) return; // Admin mód vidí výhradně BFT data
+
     try {
         let radars = getClientCache('tacnav_radars_cache', 24 * 60 * 60 * 1000, currentLng, currentLat, 20000); // Platnost 24h, 20km radius
         
@@ -1657,6 +1670,8 @@ async function fetchAndRenderRadars() {
 // --- Týlové body (POI - Čerpací stanice) ---
 const poiMarkers = {};
 async function fetchAndRenderPOIs() {
+    if (isBftAdminMode) return; // Admin mód vidí výhradně BFT data
+
     try {
         let pois = getClientCache('tacnav_pois_cache', 24 * 60 * 60 * 1000, currentLng, currentLat, 20000); // Platnost 24h, 20km radius
         
@@ -2112,12 +2127,32 @@ voiceSelect.addEventListener('change', (e) => {
     speak(`Aktivován audio profil.`); // Testovací hláška při přepnutí
 });
 
+// --- UI pro výběr BFT Skupiny ---
+const bftGroupInput = document.createElement('input');
+bftGroupInput.id = 'bft-group';
+bftGroupInput.type = 'text';
+bftGroupInput.value = currentBftGroup;
+bftGroupInput.style.cssText = 'width: 100%; margin-bottom: 14px; background: rgba(0, 50, 0, 0.3); border: 1px solid #00ff00; color: #00ff00; padding: 6px; font-family: inherit; box-shadow: inset 0 0 5px rgba(0, 255, 0, 0.2); backdrop-filter: blur(4px);';
+
+bftGroupInput.addEventListener('change', (e) => {
+    const val = e.target.value.trim() || 'PUBLIC';
+    localStorage.setItem('tacnav_bft_group', val);
+    sysLog(`Restartuji do skupiny: ${val}`);
+    setTimeout(() => window.location.reload(), 800); // Fyzický reload zajistí čistou mapu od cizích dat
+});
+
 if (assetTypeSelect && assetTypeSelect.parentNode) {
-    const label = document.createElement('label');
-    label.className = 'field-label';
-    label.innerText = 'AUDIO PROFIL';
-    assetTypeSelect.parentNode.insertBefore(label, assetTypeSelect.nextSibling);
-    assetTypeSelect.parentNode.insertBefore(voiceSelect, label.nextSibling);
+    const labelGroup = document.createElement('label');
+    labelGroup.className = 'field-label';
+    labelGroup.innerText = 'BFT SKUPINA (KANÁL)';
+    const labelAudio = document.createElement('label');
+    labelAudio.className = 'field-label';
+    labelAudio.innerText = 'AUDIO PROFIL';
+    
+    assetTypeSelect.parentNode.insertBefore(labelGroup, assetTypeSelect.nextSibling);
+    assetTypeSelect.parentNode.insertBefore(bftGroupInput, labelGroup.nextSibling);
+    assetTypeSelect.parentNode.insertBefore(labelAudio, bftGroupInput.nextSibling);
+    assetTypeSelect.parentNode.insertBefore(voiceSelect, labelAudio.nextSibling);
 }
 
 // Skrývání logů
@@ -2190,6 +2225,9 @@ headerEl.innerHTML = `
         <div id="header-start">START: N/A</div>
         <div id="header-dest">CÍL: N/A</div>
     </div>
+            <div style="font-size:10px; color:#ffcc00; text-align:center; position:absolute; top:2px; left:50%; transform:translateX(-50%); font-weight:bold; letter-spacing:1px;">
+                CH: ${currentBftGroup.toUpperCase()} ${isBftAdminMode ? '[ADMIN]' : ''}
+            </div>
     <div style="text-align:right; border-left:1px solid rgba(0,255,0,0.3); padding-left:15px; display:flex; flex-direction:column; gap:2px;">
         <div id="header-time" style="font-size:14px; font-weight:bold;">--:--:--</div>
         <div id="header-date">--.--.----</div>
@@ -2352,4 +2390,8 @@ if ('serviceWorker' in navigator) {
                 sysLog(`ERR: Service Worker selhal (${err.message})`);
             });
     });
+}
+
+if (isBftAdminMode) {
+    setTimeout(() => sysLog('*** OVERWATCH ADMIN MÓD AKTIVNÍ ***', { speak: true }), 2500);
 }
