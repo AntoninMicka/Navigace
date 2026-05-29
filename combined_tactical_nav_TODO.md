@@ -198,3 +198,23 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 - [ ] Implementace Android Wrapperu (např. Capacitor s pluginem `@capacitor/background-geolocation`).
 - [ ] Běh na pozadí: Udržení WebSockets a sdílení BFT polohy i při zhasnutém displeji.
 - [ ] Integrace nativních oprávnění (Background Location, Draw over other apps pro HUD overlay).
+
+---
+
+## 15. Rozšíření: Privátní BFT, Master Admin a Import Tras
+### Zabezpečené BFT Skupiny
+- [ ] **Zrušení PUBLIC BFT:** BFT komunikace bude možná pouze v explicitně vytvořených skupinách.
+- [x] **Zakládání s heslem:** První uživatel, který se připojí do nové skupiny, pro ni na serveru definuje heslo. Ostatní musí heslo znát.
+- [x] **Automatická expirace:** Pokud je skupina prázdná/neaktivní po stanovenou dobu (týden), server ji z paměti trvale vymaže.
+
+### Master Admin (Overwatch) Mód
+- [ ] **Hardcoded konfigurace:** Přístup do Master Admin módu bude definován tajným parametrem (např. v `.env`), nahrávaným pouze při nasazení (deployi). Zmizí klientské "uhádnutelné" skupiny.
+- [ ] **Globální viditelnost:** Admin po spuštění uvidí na mapě uživatele ze všech aktivních BFT skupin.
+- [ ] **Prefixy skupin:** Jména uživatelů na mapě u admina budou obsahovat prefix jejich domovské skupiny (např. `[ALFA] USER1`).
+- [ ] **Historie a Last Known Location (LKL):** Server bude pro admina automaticky udržovat historii hlášených poloh.
+- [ ] **Zobrazení stop (Tracks):** Admin si bude moci na mapě (UI tlačítko) nechat vykreslit celou projetou trasu konkrétního uživatele z historie.
+- [ ] **Export dat:** Možnost vyexportovat historii poloh (např. jako GPX nebo GeoJSON) pro pozdější analýzu (After Action Review).
+
+### Import a Práce s trasou
+- [ ] **Import trasy:** UI tlačítko pro nahrání uživatelské trasy ze souboru (GPX / KML / GeoJSON).
+- [ ] **Navigace po importované trase:** Upravit logiku (snapování na trasu), aby aplikace místo vlastního OSRM výpočtu uměla navigovat přesně podle ručně importované geometrie.

@@ -37,6 +37,8 @@ let isAdminView = new URLSearchParams(window.location.search).get('admin') === '
     || localStorage.getItem('tacnav_admin') === '1';
 
 let currentBftGroup = localStorage.getItem('tacnav_bft_group') || 'PUBLIC';
+let currentBftPassword = localStorage.getItem('tacnav_bft_password') || '';
+let currentBftAlias = localStorage.getItem('tacnav_bft_alias') || '';
 let isBftAdminMode = currentBftGroup.toUpperCase() === 'ADMIN' || currentBftGroup.toUpperCase().startsWith('ADMIN-');
 
 if (isBftAdminMode) {
@@ -244,7 +246,11 @@ const bftMarkers = {}; // Seznam značek ostatních uživatelů
 if (socket) {
     socket.on('connect', () => {
         sysLog(`BFT online (ID: ${socket.id.substring(0,5)})`);
-        socket.emit('join_bft_group', currentBftGroup);
+        socket.emit('join_bft_group', { 
+            room: currentBftGroup, 
+            password: currentBftPassword, 
+            alias: currentBftAlias 
+        });
         
         // Po připojení odešleme naše lokálně uložené POI na server pro ostatní
         const pois = JSON.parse(localStorage.getItem('tacnav_pois') || '[]');
@@ -1164,6 +1170,10 @@ requestWakeLock();
 function createBftMarker(u) {
     const el = document.createElement('div');
     el.className = `app6-marker app6-asset-${u.assetType || 'car'}`;
+    
+    const shortId = (u.id || 'BFT').substring(0, 4).toUpperCase();
+    const displayName = u.alias ? u.alias.substring(0, 8).toUpperCase() : shortId;
+
     el.innerHTML = `
         <div class="app6-direction-vector" style="display: none;"></div>
         <div class="app6-symbol">
@@ -1176,7 +1186,7 @@ function createBftMarker(u) {
                 <div class="app6-amp-z">${u.speed || 0} km/h</div>
             </div>
             <div class="app6-amp-right">
-                <div class="app6-amp-t">${(u.id || 'BFT').substring(0, 4).toUpperCase()}</div>
+                <div class="app6-amp-t">${displayName}</div>
                 <div class="app6-amp-h">HDG ${u.heading || '--'}</div>
             </div>
             <div class="app6-amp-bottom">
@@ -1432,8 +1442,11 @@ function renderPOIs() {
             item.style.border = '1px solid #00a6ff';
             item.style.padding = '6px';
             
+            const shortId = (u.id || 'BFT').substring(0, 4).toUpperCase();
+            const displayName = u.alias ? u.alias.substring(0, 8).toUpperCase() : shortId;
+
             const nameSpan = document.createElement('span');
-            nameSpan.innerText = `[BFT] ${(u.id || 'UNK').substring(0, 4).toUpperCase()}`;
+            nameSpan.innerText = `[BFT] ${displayName}`;
             nameSpan.style.flex = '1';
             nameSpan.style.overflow = 'hidden';
             nameSpan.style.textOverflow = 'ellipsis';
@@ -2134,24 +2147,73 @@ bftGroupInput.type = 'text';
 bftGroupInput.value = currentBftGroup;
 bftGroupInput.style.cssText = 'width: 100%; margin-bottom: 14px; background: rgba(0, 50, 0, 0.3); border: 1px solid #00ff00; color: #00ff00; padding: 6px; font-family: inherit; box-shadow: inset 0 0 5px rgba(0, 255, 0, 0.2); backdrop-filter: blur(4px);';
 
-bftGroupInput.addEventListener('change', (e) => {
-    const val = e.target.value.trim() || 'PUBLIC';
-    localStorage.setItem('tacnav_bft_group', val);
-    sysLog(`Restartuji do skupiny: ${val}`);
-    setTimeout(() => window.location.reload(), 800); // Fyzický reload zajistí čistou mapu od cizích dat
+const bftPasswordInput = document.createElement('input');
+bftPasswordInput.id = 'bft-password';
+bftPasswordInput.type = 'password';
+bftPasswordInput.placeholder = 'Volitelné pro založení/vstup';
+bftPasswordInput.value = currentBftPassword;
+bftPasswordInput.style.cssText = 'width: 100%; margin-bottom: 14px; background: rgba(0, 50, 0, 0.3); border: 1px solid #00ff00; color: #00ff00; padding: 6px; font-family: inherit; box-shadow: inset 0 0 5px rgba(0, 255, 0, 0.2); backdrop-filter: blur(4px);';
+
+const bftAliasInput = document.createElement('input');
+bftAliasInput.id = 'bft-alias';
+bftAliasInput.type = 'text';
+bftAliasInput.placeholder = 'Vaše volačka';
+bftAliasInput.value = currentBftAlias;
+bftAliasInput.style.cssText = 'width: 100%; margin-bottom: 14px; background: rgba(0, 50, 0, 0.3); border: 1px solid #00ff00; color: #00ff00; padding: 6px; font-family: inherit; box-shadow: inset 0 0 5px rgba(0, 255, 0, 0.2); backdrop-filter: blur(4px);';
+
+const bftBtnContainer = document.createElement('div');
+bftBtnContainer.style.cssText = 'display: flex; gap: 8px; margin-bottom: 14px;';
+
+const bftJoinBtn = document.createElement('button');
+bftJoinBtn.innerText = 'PŘIPOJIT';
+bftJoinBtn.style.cssText = 'flex: 1; padding: 8px; font-weight: bold;';
+
+const bftLeaveBtn = document.createElement('button');
+bftLeaveBtn.innerText = 'ODPOJIT';
+bftLeaveBtn.style.cssText = 'flex: 1; padding: 8px; font-weight: bold; border-color: #ff3333; color: #ff3333;';
+bftLeaveBtn.onmouseover = () => bftLeaveBtn.style.background = 'rgba(255, 51, 51, 0.2)';
+bftLeaveBtn.onmouseout = () => bftLeaveBtn.style.background = 'transparent';
+
+bftBtnContainer.appendChild(bftJoinBtn);
+bftBtnContainer.appendChild(bftLeaveBtn);
+
+bftJoinBtn.addEventListener('click', () => {
+    localStorage.setItem('tacnav_bft_group', bftGroupInput.value.trim() || 'PUBLIC');
+    localStorage.setItem('tacnav_bft_password', bftPasswordInput.value.trim());
+    localStorage.setItem('tacnav_bft_alias', bftAliasInput.value.trim());
+    sysLog('Aplikuji nastavení BFT...');
+    setTimeout(() => window.location.reload(), 800);
+});
+
+bftLeaveBtn.addEventListener('click', () => {
+    localStorage.setItem('tacnav_bft_group', 'PUBLIC');
+    localStorage.setItem('tacnav_bft_password', '');
+    sysLog('Opouštím BFT skupinu...');
+    setTimeout(() => window.location.reload(), 800);
 });
 
 if (assetTypeSelect && assetTypeSelect.parentNode) {
     const labelGroup = document.createElement('label');
     labelGroup.className = 'field-label';
     labelGroup.innerText = 'BFT SKUPINA (KANÁL)';
+    const labelPwd = document.createElement('label');
+    labelPwd.className = 'field-label';
+    labelPwd.innerText = 'HESLO (PRO ZALOŽENÍ I VSTUP)';
+    const labelAlias = document.createElement('label');
+    labelAlias.className = 'field-label';
+    labelAlias.innerText = 'VOLACÍ ZNAK (ALIAS)';
     const labelAudio = document.createElement('label');
     labelAudio.className = 'field-label';
     labelAudio.innerText = 'AUDIO PROFIL';
     
     assetTypeSelect.parentNode.insertBefore(labelGroup, assetTypeSelect.nextSibling);
     assetTypeSelect.parentNode.insertBefore(bftGroupInput, labelGroup.nextSibling);
-    assetTypeSelect.parentNode.insertBefore(labelAudio, bftGroupInput.nextSibling);
+    assetTypeSelect.parentNode.insertBefore(labelPwd, bftGroupInput.nextSibling);
+    assetTypeSelect.parentNode.insertBefore(bftPasswordInput, labelPwd.nextSibling);
+    assetTypeSelect.parentNode.insertBefore(labelAlias, bftPasswordInput.nextSibling);
+    assetTypeSelect.parentNode.insertBefore(bftAliasInput, labelAlias.nextSibling);
+    assetTypeSelect.parentNode.insertBefore(bftBtnContainer, bftAliasInput.nextSibling);
+    assetTypeSelect.parentNode.insertBefore(labelAudio, bftBtnContainer.nextSibling);
     assetTypeSelect.parentNode.insertBefore(voiceSelect, labelAudio.nextSibling);
 }
 

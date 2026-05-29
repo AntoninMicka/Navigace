@@ -359,23 +359,58 @@ try {
 const io = new Server();
 const bftUsers = {}; // socket.id -> { room, data }
 const bftPois = {};  // room -> { poiId: poiData }
+const bftRooms = {}; // room -> { password, lastActive }
+
+const ROOM_EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000; // Platnost 7 dní
+
+// Automatická údržba (Garbage Collection) - promazání neaktivních skupin
+setInterval(() => {
+    const now = Date.now();
+    for (const room in bftRooms) {
+        if (now - bftRooms[room].lastActive > ROOM_EXPIRATION_MS) {
+            console.log(`[BFT] Skupina ${room} byla smazána pro neaktivitu (>7 dní).`);
+            delete bftRooms[room];
+            delete bftPois[room];
+        }
+    }
+}, 60 * 60 * 1000); // Spouštět každou hodinu
 
 io.on('connection', (socket) => {
     console.log(`[BFT] Uživatel připojen: ${socket.id}`);
     
-    socket.on('join_bft_group', (room) => {
+    socket.on('join_bft_group', (params) => {
+        // Zpětná kompatibilita, kdyby dorazil jen název ze starého klienta
+        if (typeof params === 'string') params = { room: params, password: '', alias: '' };
+        
+        const { room, password, alias } = params;
+
         // Opustit případné staré místnosti
         Array.from(socket.rooms).forEach(r => {
             if (r !== socket.id) socket.leave(r);
         });
         
         const safeRoom = (room || 'PUBLIC').trim().toUpperCase();
+
+        // Kontrola hesel / Založení skupiny
+        if (bftRooms[safeRoom]) {
+            // Skupina existuje, zkontrolujeme heslo
+            if (bftRooms[safeRoom].password && bftRooms[safeRoom].password !== password) {
+                socket.emit('bft_error', 'Nesprávné heslo pro skupinu.');
+                return; // Ukončíme proces - uživatel se do skupiny nepřipojí
+            }
+        } else {
+            // Nová skupina
+            bftRooms[safeRoom] = { password: password || '', lastActive: Date.now() };
+            console.log(`[BFT] Založena nová skupina: ${safeRoom}`);
+        }
+
         socket.join(safeRoom);
         
         if (!bftPois[safeRoom]) bftPois[safeRoom] = {};
+        if (bftRooms[safeRoom]) bftRooms[safeRoom].lastActive = Date.now();
         
-        bftUsers[socket.id] = { room: safeRoom, data: { id: socket.id } };
-        console.log(`[BFT] Uživatel ${socket.id} vstoupil do skupiny: ${safeRoom}`);
+        bftUsers[socket.id] = { room: safeRoom, data: { id: socket.id, alias: alias || '' } };
+        console.log(`[BFT] Uživatel ${alias || socket.id} vstoupil do skupiny: ${safeRoom}`);
         
         // Odeslání existujících POI z dané místnosti
         socket.emit('bft_pois_update', Object.values(bftPois[safeRoom]));
@@ -388,7 +423,8 @@ io.on('connection', (socket) => {
     socket.on('position_update', (data) => {
         if (bftUsers[socket.id]) {
             const room = bftUsers[socket.id].room;
-            bftUsers[socket.id].data = { id: socket.id, ...data };
+            if (bftRooms[room]) bftRooms[room].lastActive = Date.now();
+            bftUsers[socket.id].data = { ...bftUsers[socket.id].data, ...data }; // Merge, aby alias nezmizel
             const usersInRoom = Object.values(bftUsers).filter(u => u.room === room).map(u => u.data);
             io.to(room).emit('bft_update', usersInRoom);
         }
@@ -397,6 +433,7 @@ io.on('connection', (socket) => {
     socket.on('poi_add', (poi) => {
         if (bftUsers[socket.id] && poi && poi.id) {
             const room = bftUsers[socket.id].room;
+            if (bftRooms[room]) bftRooms[room].lastActive = Date.now();
             if (!bftPois[room]) bftPois[room] = {};
             bftPois[room][poi.id] = poi;
             io.to(room).emit('bft_pois_update', Object.values(bftPois[room]));
@@ -406,6 +443,7 @@ io.on('connection', (socket) => {
     socket.on('poi_delete', (id) => {
         if (bftUsers[socket.id] && id) {
             const room = bftUsers[socket.id].room;
+            if (bftRooms[room]) bftRooms[room].lastActive = Date.now();
             if (bftPois[room] && bftPois[room][id]) {
                 delete bftPois[room][id];
                 io.to(room).emit('bft_pois_update', Object.values(bftPois[room]));
