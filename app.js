@@ -270,7 +270,7 @@ if (socket) {
         alert(`BFT Přístup odepřen:\n${msg}`);
         localStorage.setItem('tacnav_bft_group', 'PUBLIC');
         localStorage.setItem('tacnav_bft_password', '');
- });
+    });
     
     socket.on('bft_update', (users) => {
         const activeIds = new Set(users.map(u => u.id));
@@ -2224,6 +2224,24 @@ if (assetTypeSelect && assetTypeSelect.parentNode) {
     assetTypeSelect.parentNode.insertBefore(bftBtnContainer, bftAliasInput.nextSibling);
     assetTypeSelect.parentNode.insertBefore(labelAudio, bftBtnContainer.nextSibling);
     assetTypeSelect.parentNode.insertBefore(voiceSelect, labelAudio.nextSibling);
+
+    // Přidání tlačítka pro tvrdý reload (vymazání cache pro načtení nové verze)
+    const forceReloadBtn = document.createElement('button');
+    forceReloadBtn.innerText = '🔄 AKTUALIZOVAT APP (VYČISTIT CACHE)';
+    forceReloadBtn.style.cssText = 'width: 100%; margin-top: 25px; padding: 10px; font-weight: bold; background: rgba(255, 204, 0, 0.1); border: 1px solid #ffcc00; color: #ffcc00; font-family: inherit;';
+    forceReloadBtn.onclick = async () => {
+        sysLog('Mažu mezipaměť a stahuji novou verzi...');
+        if ('caches' in window) {
+            const names = await caches.keys();
+            await Promise.all(names.map(name => caches.delete(name)));
+        }
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            for (const reg of regs) await reg.unregister();
+        }
+        setTimeout(() => window.location.reload(), 300);
+    };
+    assetTypeSelect.parentNode.insertBefore(forceReloadBtn, voiceSelect.nextSibling);
 }
 
 // Skrývání logů
