@@ -206,6 +206,7 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 - [ ] Komunitní backend pro real-time sdílení
 - [ ] BFT (Blue Force Tracking) – systém skupin (místností) chráněných heslem pro živé sdílení polohy
 - [ ] Skupinový chat
+- [x] Hlasový PTT (Push-To-Talk) kanál přes existující Socket.io BFT místnosti
 - [ ] Gamifikace (Achievementy, Reputation)
 
 ### Fáze 5 (Android Nativní Wrapper)

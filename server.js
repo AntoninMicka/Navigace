@@ -452,6 +452,16 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Přenos audia (PTT vysílačka)
+    socket.on('radio_tx', (audioBuffer) => {
+        if (bftUsers[socket.id] && audioBuffer) {
+            const room = bftUsers[socket.id].room;
+            if (bftRooms[room]) bftRooms[room].lastActive = Date.now();
+            // Přepošle nahraný buffer všem v aktuální skupině (mimo odesílatele)
+            socket.to(room).emit('radio_rx', audioBuffer);
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log(`[BFT] Uživatel odpojen: ${socket.id}`);
         if (bftUsers[socket.id]) {

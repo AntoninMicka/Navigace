@@ -1954,6 +1954,66 @@ function speak(text, priority = false) {
     processSpeechQueue();
 }
 
+// --- PTT Radio (Push-To-Talk) přes Socket.io ---
+let audioStream = null;
+let mediaRecorder = null;
+let audioChunks = [];
+
+const pttBtn = document.createElement('button');
+pttBtn.id = 'btn-ptt';
+pttBtn.innerText = '🎙️ PTT';
+pttBtn.style.cssText = 'position:absolute; bottom:110px; right:15px; width:65px; height:65px; border-radius:50%; background:rgba(0,50,0,0.8); border:2px solid #00ff00; color:#0f0; font-weight:bold; z-index:1000; box-shadow: 0 0 10px rgba(0,255,0,0.3); user-select:none; touch-action:manipulation; font-family:monospace; display:none;';
+appContainer.appendChild(pttBtn);
+
+async function initRadio() {
+    try {
+        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        sysLog('Mikrofon připojen. Rádio připraveno.');
+    } catch (err) {
+        sysLog('ERR: Přístup k mikrofonu odepřen.');
+    }
+}
+
+function startRecording() {
+    if (!audioStream) {
+        initRadio().then(() => { if (audioStream) startRecording(); });
+        return;
+    }
+    if (mediaRecorder && mediaRecorder.state === 'recording') return;
+    
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(audioStream);
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    
+    mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks); // Browser default audio mime type (WebM/MP4)
+        if (socket && socket.connected) {
+            socket.emit('radio_tx', audioBlob); // Odeslání na server
+        }
+    };
+    
+    mediaRecorder.start();
+    pttBtn.style.background = 'rgba(255,51,51,0.5)';
+    pttBtn.style.borderColor = '#ff3333';
+    playSFX('squelch'); // Zvuk zmáčknutí klíče
+}
+
+function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        pttBtn.style.background = 'rgba(0,50,0,0.8)';
+        pttBtn.style.borderColor = '#00ff00';
+        playSFX('squelch'); // Zvuk puštění klíče
+    }
+}
+
+// Pověšení eventů na tlačítko (myš i dotyk)
+pttBtn.addEventListener('mousedown', startRecording);
+pttBtn.addEventListener('mouseup', stopRecording);
+pttBtn.addEventListener('mouseleave', stopRecording);
+pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); });
+pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); });
+
 function getManeuverIcon(step) {
     const type = step.maneuver.type;
     const modifier = step.maneuver.modifier || '';
@@ -2224,6 +2284,25 @@ bftLeaveBtn.onmouseout = () => bftLeaveBtn.style.background = 'transparent';
 bftBtnContainer.appendChild(bftJoinBtn);
 bftBtnContainer.appendChild(bftLeaveBtn);
 
+// Zachytávání příchozích radiových relací
+if (socket) {
+    socket.on('radio_rx', (audioData) => {
+        const blob = new Blob([audioData]);
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        
+        sysLog('Příchozí relace...', { priority: true }); // Upozornění v logu
+        playSFX('squelch'); // Zvuk zapnutí vysílačky u příjemce
+        
+        setTimeout(() => audio.play().catch(e => sysLog('Audio zablokováno prohlížečem.')), 200);
+        
+        audio.onended = () => {
+            playSFX('squelch'); // Cvaknutí na konci relace
+            URL.revokeObjectURL(url); // Uvolnění z paměti
+        };
+    });
+}
+
 bftJoinBtn.addEventListener('click', () => {
     localStorage.setItem('tacnav_bft_group', (bftGroupInput.value.trim() || 'PUBLIC').toUpperCase());
     localStorage.setItem('tacnav_bft_password', bftPasswordInput.value.trim());
@@ -2231,6 +2310,9 @@ bftJoinBtn.addEventListener('click', () => {
     sysLog('Aplikuji nastavení BFT...');
     setTimeout(() => window.location.reload(), 800);
 });
+
+// Tlačítko PTT zobrazit jen když jsme v nějaké BFT skupině
+if (currentBftGroup) pttBtn.style.display = 'block';
 
 bftLeaveBtn.addEventListener('click', () => {
     localStorage.setItem('tacnav_bft_group', 'PUBLIC');
