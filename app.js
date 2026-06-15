@@ -1979,7 +1979,12 @@ async function initRadio() {
         sysLog(`ERR: Přístup k mikrofonu odepřen (${err.name}).`);
         
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            alert('Přístup k mikrofonu byl zablokován.\n\nŘEŠENÍ:\n1. Klikněte na ikonu zámku 🔒 v adresním řádku prohlížeče.\n2. Přejděte do nastavení webu/oprávnění.\n3. Povolte přístup k mikrofonu.\n4. Obnovte tuto stránku.');
+            const isLocal = window.location.hostname.match(/^(192\.168\.|10\.|172\.)/);
+            if (isLocal) {
+                alert('CHYBA: Mobilní prohlížeč tvrdě blokuje mikrofon na lokální IP adrese.\n\nŘEŠENÍ PRO ANDROID:\n1. Do adresního řádku zadejte: chrome://flags/#unsafely-treat-insecure-origin-as-secure\n2. Přidejte tam vaši IP adresu (např. http://' + window.location.hostname + ':3000)\n3. Přepněte z Default na Enabled a restartujte Chrome.');
+            } else {
+                alert('Přístup k mikrofonu byl zablokován.\n\nŘEŠENÍ:\n1. Klikněte na ikonu zámku 🔒 v adresním řádku prohlížeče.\n2. Přejděte do nastavení webu/oprávnění.\n3. Povolte přístup k mikrofonu.\n4. Obnovte tuto stránku.');
+            }
         } else if (err.name === 'NotFoundError') {
             alert('Zařízení nemá připojený/dostupný mikrofon.');
         } else {
@@ -1991,10 +1996,8 @@ async function initRadio() {
 function startRecording() {
     isPttPressed = true;
     if (!audioStream) {
-        initRadio().then(() => { 
-            // Zahájí nahrávání jen pokud uživatel po odkliknutí oprávnění stále drží tlačítko
-            if (audioStream && isPttPressed) startRecording(); 
-        });
+        sysLog('Aktivuji mikrofon, potvrďte systémové okno...');
+        initRadio(); // Poprvé se pouze inicializuje, nahrávat se bude až dalším stiskem
         return;
     }
     if (mediaRecorder && mediaRecorder.state === 'recording') return;
@@ -2032,12 +2035,13 @@ function stopRecording() {
     }
 }
 
-// Pověšení eventů na tlačítko (myš i dotyk)
-pttBtn.addEventListener('mousedown', startRecording);
+// Pověšení eventů na tlačítko (myš i dotyk) - odstraněn preventDefault, který blokoval vyskakovací okna
+pttBtn.addEventListener('mousedown', (e) => { if (e.button === 0) startRecording(); });
 pttBtn.addEventListener('mouseup', stopRecording);
 pttBtn.addEventListener('mouseleave', stopRecording);
-pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); });
-pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); });
+pttBtn.addEventListener('touchstart', startRecording, { passive: true });
+pttBtn.addEventListener('touchend', stopRecording, { passive: true });
+pttBtn.addEventListener('touchcancel', stopRecording, { passive: true });
 
 function getManeuverIcon(step) {
     const type = step.maneuver.type;
