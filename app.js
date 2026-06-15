@@ -1958,6 +1958,7 @@ function speak(text, priority = false) {
 let audioStream = null;
 let mediaRecorder = null;
 let audioChunks = [];
+let isPttPressed = false;
 
 const pttBtn = document.createElement('button');
 pttBtn.id = 'btn-ptt';
@@ -1966,17 +1967,26 @@ pttBtn.style.cssText = 'position:absolute; bottom:110px; right:15px; width:65px;
 document.getElementById('app-container').appendChild(pttBtn);
 
 async function initRadio() {
+    if (!window.isSecureContext) {
+        sysLog('ERR: Mikrofon vyžaduje bezpečné HTTPS připojení!');
+        alert('Bezpečnostní omezení: PTT vysílačka vyžaduje pro přístup k mikrofonu HTTPS připojení (nebo localhost).');
+        return;
+    }
     try {
         audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         sysLog('Mikrofon připojen. Rádio připraveno.');
     } catch (err) {
-        sysLog('ERR: Přístup k mikrofonu odepřen.');
+        sysLog(`ERR: Přístup k mikrofonu odepřen (${err.name}).`);
     }
 }
 
 function startRecording() {
+    isPttPressed = true;
     if (!audioStream) {
-        initRadio().then(() => { if (audioStream) startRecording(); });
+        initRadio().then(() => { 
+            // Zahájí nahrávání jen pokud uživatel po odkliknutí oprávnění stále drží tlačítko
+            if (audioStream && isPttPressed) startRecording(); 
+        });
         return;
     }
     if (mediaRecorder && mediaRecorder.state === 'recording') return;
@@ -1986,19 +1996,26 @@ function startRecording() {
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
     
     mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunks); // Browser default audio mime type (WebM/MP4)
-        if (socket && socket.connected) {
-            socket.emit('radio_tx', audioBlob); // Odeslání na server
+        if (audioChunks.length > 0) {
+            const audioBlob = new Blob(audioChunks); // Browser default audio mime type
+            if (socket && socket.connected) {
+                socket.emit('radio_tx', audioBlob); // Odeslání na server
+            }
         }
     };
     
-    mediaRecorder.start();
-    pttBtn.style.background = 'rgba(255,51,51,0.5)';
-    pttBtn.style.borderColor = '#ff3333';
-    playSFX('squelch'); // Zvuk zmáčknutí klíče
+    try {
+        mediaRecorder.start();
+        pttBtn.style.background = 'rgba(255,51,51,0.5)';
+        pttBtn.style.borderColor = '#ff3333';
+        playSFX('squelch'); // Zvuk zmáčknutí klíče
+    } catch (err) {
+        sysLog(`ERR: Nelze spustit nahrávání (${err.name})`);
+    }
 }
 
 function stopRecording() {
+    isPttPressed = false;
     if (mediaRecorder && mediaRecorder.state === 'recording') {
         mediaRecorder.stop();
         pttBtn.style.background = 'rgba(0,50,0,0.8)';
