@@ -1977,6 +1977,14 @@ async function initRadio() {
         sysLog('Mikrofon připojen. Rádio připraveno.');
     } catch (err) {
         sysLog(`ERR: Přístup k mikrofonu odepřen (${err.name}).`);
+        
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            alert('Přístup k mikrofonu byl zablokován.\n\nŘEŠENÍ:\n1. Klikněte na ikonu zámku 🔒 v adresním řádku prohlížeče.\n2. Přejděte do nastavení webu/oprávnění.\n3. Povolte přístup k mikrofonu.\n4. Obnovte tuto stránku.');
+        } else if (err.name === 'NotFoundError') {
+            alert('Zařízení nemá připojený/dostupný mikrofon.');
+        } else {
+            alert(`Nelze spustit mikrofon: ${err.message || err.name}`);
+        }
     }
 }
 
