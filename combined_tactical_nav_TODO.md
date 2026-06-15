@@ -21,7 +21,8 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 - [x] **Frontend Jádro:** Statický hosting (Vercel, GitHub Pages) pro rychlé načtení PWA
 - [x] **Úložiště:** Klientské `IndexedDB` a `Cache API` pro offline radary a mapové dlaždice
 - [ ] **Realtime sync (BFT & Eventy):** Lehký Node.js (WebSockets/Socket.io) nebo MQTT broker (např. Mosquitto) pro Blue Force Tracking (trakování přátel) a crowdsourcing událostí
-
+- [ ] **Datové úložiště (Budoucí):** Návrh SQLite schématu a offline perzistence pro lokální event cache
+ 
 ---
 
 ## 3. Zdroje Dat a Agregace
@@ -55,9 +56,16 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 | Zácpa / Kolona | Mobility collapse / Denied area | Mobility denied |
 | Nehoda | Disabled vehicle | Hazard marker |
 | Uzavírka | Route denial | Obstruction |
-- [x] Čerpací stanice | Refuel point / Logistics | Logistics point |
+| Čerpací stanice | Refuel point / Logistics | Logistics point |
 
 *Poznámka: Spřátelené jednotky (přátelé) budou na mapě trakovány v reálném čase prostřednictvím modulu BFT (Blue Force Tracking).*
+
+### MIL-STD-2525 Implementace (Detailní plán)
+- [ ] **Fáze 1 (Jádro):** Rámeček a výplň, Hlavní ikona, Vnitřní modifikátory
+- [ ] **Fáze 2 (Kotevní body a LOD):** Definice mřížky, ošetření textového rendereru (halo efekt), Level of Detail (skrývání polí)
+- [ ] **Fáze 3 (Horní/Spodní indikátory):** Echelon a mobilita, Speciální horní pole, Spodní datová pole
+- [ ] **Fáze 4 (Boční bloky):** Levý sloupec (datum/čas, množství), Pravý sloupec (volací znaky)
+- [x] **Fáze 5 (Dynamické prvky):** Vektor směru pohybu, Vodící čára k pozici
 
 ---
 
@@ -91,6 +99,9 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 - [x] Wake Lock API implementace (`navigator.wakeLock`) aby displej nezhasínal během jízdy a ošetření probuzení (Visibility API)
 - [ ] Plně responzivní layout (CSS Grid / Flexbox, Mobile-first)
 - [ ] Adaptivní informační panely (na malém displeji dynamicky vyjíždějící/skryté, na velkém trvalé zobrazení po stranách)
+- [x] Dual-map layout pro desktop/tablet (Hlavní mapa + Přehledová "Overview" mapa)
+- [ ] **Overview Mapa:** Zvýraznění rizik (vykreslení výrazných červených zón kolem hrozeb, které na oddálené mapě nezapadnou)
+- [ ] **Overview Mapa:** Performance optimalizace (skrývání textových labelů `app6-amplifiers` při velkém oddálení pro úsporu výkonu)
 
 ---
 
@@ -98,7 +109,8 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 - [ ] Přehrávání OGG/WAV zvuků
 - [ ] TTS (Text-to-Speech) fallback pro čtení dynamických textů
 - [ ] Volume ducking (ztlumení hudby při hlášení)
-
+- [ ] Audio Témata (Standard, Synthwave, Military, Retro GPS)
+ 
 ### Voice Packy (Hlasy)
 - [ ] NATO commander (*"Hostile enforcement unit ahead"*)
 - [ ] AWACS operator / Helicopter pilot (*"Proceeding through contested sector"*)
@@ -130,7 +142,7 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 ### Herní mechaniky
 - [ ] DEFCON traffic scale (škála dopravní zátěže)
 - [ ] Driver reputation / Intel reliability
-- [ ] Achievementy (např. *"Zero-stop extraction"*, *"Urban stealth maneuver"*)
+- [ ] Achievementy (např. *"Zero-stop extraction"*, *"Congestion evasion"*, *"Efficient fuel operation"*, *"Urban stealth maneuver"*)
 
 ### Taktický / Absurdní flavor
 - [ ] Falešný šifrovaný rádiový provoz (ambientní zvuky)
@@ -146,7 +158,9 @@ Aplikace bude plnohodnotná mapová PWA (Progressive Web App) běžící v prohl
 - [ ] AI-generované taktické brífinky před jízdou
 - [ ] Predikce dopravy a overlay hrozeb počasí (Weather threat overlays)
 - [ ] WebRTC car-to-car peer-to-peer komunikace pro varování nablízko
-
+- [ ] Integrace s OsmAnd (Intent API, deeplinky, custom alerts)
+- [ ] Experimentální funkce (Interoperabilita s ATAK / CIVTAK, případná SDR/radio integrace)
+ 
 ---
 
 ## 12. Brainstorming Názvů Aplikace
