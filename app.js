@@ -1963,7 +1963,7 @@ const pttBtn = document.createElement('button');
 pttBtn.id = 'btn-ptt';
 pttBtn.innerText = '🎙️ PTT';
 pttBtn.style.cssText = 'position:absolute; bottom:110px; right:15px; width:65px; height:65px; border-radius:50%; background:rgba(0,50,0,0.8); border:2px solid #00ff00; color:#0f0; font-weight:bold; z-index:1000; box-shadow: 0 0 10px rgba(0,255,0,0.3); user-select:none; touch-action:manipulation; font-family:monospace; display:none;';
-appContainer.appendChild(pttBtn);
+document.getElementById('app-container').appendChild(pttBtn);
 
 async function initRadio() {
     try {
