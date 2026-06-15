@@ -1073,15 +1073,53 @@ function handlePositionSuccess(position) {
         // Najdeme nejbližší budoucí krok na trase pro hlasové hlášení
         const upcomingStep = currentRouteSteps.find(s => !s.passed);
 
-        if (upcomingStep && !upcomingStep.announced) {
+        if (upcomingStep) {
             const maneuverPoint = upcomingStep.maneuver.location;
             const distance = new maplibregl.LngLat(lng, lat).distanceTo(new maplibregl.LngLat(maneuverPoint[0], maneuverPoint[1]));
             
-            if (distance < 300) {
-                const instruction = formatManeuver(upcomingStep);
-                sysLog(`NAV: ${instruction} (${Math.round(distance)}m)`);
-                speak(instruction, true);
-                upcomingStep.announced = true;
+            upcomingStep.announcements = upcomingStep.announcements || { early: false, approach1: false, approach2: false, imminent: false };
+            
+            const instruction = formatManeuver(upcomingStep);
+            const instructionLow = instruction.charAt(0).toLowerCase() + instruction.slice(1);
+            let textToSpeak = null;
+
+            // Dynamické prahy podle rychlosti
+            const imminentDist = Math.max(70, currentSpeedKmh * 1.5); // Těsně před (cca 3-5 sekund)
+            const approach2Dist = Math.max(300, currentSpeedKmh * 6); // Přibližování 2 (cca 15-20 sekund)
+            const approach1Dist = Math.max(800, currentSpeedKmh * 12); // Přibližování 1 (cca 40 sekund)
+
+            if (distance <= imminentDist && !upcomingStep.announcements.imminent) {
+                textToSpeak = instruction; // Např. "Odbočte vpravo"
+                upcomingStep.announcements.imminent = true;
+                upcomingStep.announcements.approach2 = true;
+                upcomingStep.announcements.approach1 = true;
+                upcomingStep.announcements.early = true;
+            } 
+            else if (distance <= approach2Dist && distance > imminentDist && !upcomingStep.announcements.approach2) {
+                const distRound = Math.round(distance / 50) * 50;
+                textToSpeak = `Za ${distRound} metrů, ${instructionLow}`;
+                upcomingStep.announcements.approach2 = true;
+                upcomingStep.announcements.approach1 = true;
+                upcomingStep.announcements.early = true;
+            }
+            else if (distance <= approach1Dist && distance > approach2Dist && !upcomingStep.announcements.approach1) {
+                const distRound = Math.round(distance / 100) * 100;
+                textToSpeak = `Za ${distRound} metrů, ${instructionLow}`;
+                upcomingStep.announcements.approach1 = true;
+                upcomingStep.announcements.early = true;
+            }
+            else if (distance > approach1Dist && !upcomingStep.announcements.early) {
+                let km = (distance / 1000).toFixed(1);
+                if (km.endsWith('.0')) km = km.slice(0, -2);
+                let distStr = distance >= 1000 ? `${km} km` : `${Math.round(distance / 100) * 100} metrů`;
+                
+                textToSpeak = `Pokračujte ${distStr}, poté ${instructionLow}`;
+                upcomingStep.announcements.early = true;
+            }
+
+            if (textToSpeak) {
+                sysLog(`NAV: ${textToSpeak}`);
+                speak(textToSpeak, upcomingStep.announcements.imminent); // Těsně před manévrem má hlášení prioritu
             }
         }
     } else {
