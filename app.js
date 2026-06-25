@@ -47,6 +47,7 @@ if (isBftAdminMode) {
 
 let currentAssetType = localStorage.getItem('tacnav_asset_type') || (isBftAdminMode ? 'hq' : 'car');
 const overlayVisibility = {
+    radars: localStorage.getItem('tacnav_layer_radars') === '1',
     police: localStorage.getItem('tacnav_layer_police') === '1',
     fuel: localStorage.getItem('tacnav_layer_fuel') === '1'
 };
@@ -1665,6 +1666,7 @@ function setClientCache(key, data, lng, lat) {
 }
 
 function getOptionalLayerKeyForType(type) {
+    if (type === 'radar' || type === 'average_camera') return 'radars';
     if (type === 'police') return 'police';
     if (type === 'fuel' || type === 'medical') return 'fuel';
     return null;
@@ -1682,6 +1684,7 @@ function updateMarkerVisibility(record) {
 }
 
 function refreshOptionalLayerVisibility() {
+    Object.values(eventMarkers).forEach(updateMarkerVisibility);
     Object.values(poiMarkers).forEach(updateMarkerVisibility);
     updateNavStepsUI(currentLng, currentLat);
     renderElevationProfile();
@@ -1695,6 +1698,7 @@ function setOptionalLayerVisibility(layerKey, isVisible) {
 
 function initLayerToggles() {
     const layerToggles = [
+        { id: 'toggle-layer-radars', key: 'radars', label: 'měření rychlosti' },
         { id: 'toggle-layer-police', key: 'police', label: 'policie' },
         { id: 'toggle-layer-fuel', key: 'fuel', label: 'čerpacích stanic' }
     ];
@@ -1767,6 +1771,7 @@ async function fetchAndRenderRadars() {
                     .addTo(map);
                 
                 eventMarkers[rad.id] = { marker, el, userData: rad };
+                updateMarkerVisibility(eventMarkers[rad.id]);
             }
         });
         
@@ -2276,6 +2281,7 @@ function checkProximity() {
     Object.values(eventMarkers).forEach(threat => {
         const threatId = threat.marker.getElement().id;
         if (!threatId || alertedEvents.has(threatId)) return;
+        if (!isMarkerTypeVisible(threat.userData?.type)) return;
 
         const distance = new maplibregl.LngLat(currentLng, currentLat).distanceTo(threat.marker.getLngLat());
         if (distance < PROXIMITY_ALERT_DISTANCE_METERS) {
