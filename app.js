@@ -46,6 +46,10 @@ if (isBftAdminMode) {
 }
 
 let currentAssetType = localStorage.getItem('tacnav_asset_type') || (isBftAdminMode ? 'hq' : 'car');
+const overlayVisibility = {
+    police: localStorage.getItem('tacnav_layer_police') === '1',
+    fuel: localStorage.getItem('tacnav_layer_fuel') === '1'
+};
 
 let isFirstLocation = true;
 let currentLng = null;
@@ -1660,6 +1664,53 @@ function setClientCache(key, data, lng, lat) {
     }
 }
 
+function getOptionalLayerKeyForType(type) {
+    if (type === 'police') return 'police';
+    if (type === 'fuel' || type === 'medical') return 'fuel';
+    return null;
+}
+
+function isMarkerTypeVisible(type) {
+    const layerKey = getOptionalLayerKeyForType(type);
+    if (!layerKey) return true;
+    return overlayVisibility[layerKey];
+}
+
+function updateMarkerVisibility(record) {
+    if (!record?.el || !record.userData) return;
+    record.el.style.display = isMarkerTypeVisible(record.userData.type) ? '' : 'none';
+}
+
+function refreshOptionalLayerVisibility() {
+    Object.values(poiMarkers).forEach(updateMarkerVisibility);
+    updateNavStepsUI(currentLng, currentLat);
+    renderElevationProfile();
+}
+
+function setOptionalLayerVisibility(layerKey, isVisible) {
+    overlayVisibility[layerKey] = isVisible;
+    localStorage.setItem(`tacnav_layer_${layerKey}`, isVisible ? '1' : '0');
+    refreshOptionalLayerVisibility();
+}
+
+function initLayerToggles() {
+    const layerToggles = [
+        { id: 'toggle-layer-police', key: 'police', label: 'policie' },
+        { id: 'toggle-layer-fuel', key: 'fuel', label: 'čerpacích stanic' }
+    ];
+
+    layerToggles.forEach(({ id, key, label }) => {
+        const input = document.getElementById(id);
+        if (!input) return;
+
+        input.checked = overlayVisibility[key];
+        input.addEventListener('change', () => {
+            setOptionalLayerVisibility(key, input.checked);
+            sysLog(`Vrstva ${label} ${input.checked ? 'zapnuta' : 'vypnuta'}.`);
+        });
+    });
+}
+
 // --- Radary (Nepřátelské senzory z OSM) ---
 async function fetchAndRenderRadars() {
     if (isBftAdminMode) return; // Admin mód vidí výhradně BFT data
@@ -1781,6 +1832,7 @@ async function fetchAndRenderPOIs() {
                     .addTo(map);
                 
                 poiMarkers[poi.id] = { marker, el, userData: poi };
+                updateMarkerVisibility(poiMarkers[poi.id]);
             }
         });
     } catch (err) {
@@ -2098,6 +2150,7 @@ function updateNavStepsUI(lng, lat) {
     const allMarkers = [ ...Object.values(eventMarkers), ...Object.values(poiMarkers) ];
     allMarkers.forEach(m => {
         if (!m.userData) return;
+        if (!isMarkerTypeVisible(m.userData.type)) return;
         const dist = (lng && lat) ? new maplibregl.LngLat(lng, lat).distanceTo(m.marker.getLngLat()) : 999999;
         
         // Ukaž značky mezi 100 metry a 5 km, pokud jsou před námi
@@ -2242,6 +2295,7 @@ function checkProximity() {
 setInterval(checkProximity, 2500);
 
 // --- UI Toggles ---
+initLayerToggles();
 
 document.getElementById('btn-start-nav').addEventListener('click', startNavigation);
 document.getElementById('btn-stop-nav').addEventListener('click', stopNavigation);
@@ -2538,6 +2592,7 @@ function renderElevationProfile() {
     const allMarkers = [ ...Object.values(eventMarkers), ...Object.values(poiMarkers) ];
     allMarkers.forEach(m => {
         if (!m.userData || currentRouteCoords.length === 0) return;
+        if (!isMarkerTypeVisible(m.userData.type)) return;
         
         let minMeters = Infinity;
         let totalMetersToPoint = 0;
